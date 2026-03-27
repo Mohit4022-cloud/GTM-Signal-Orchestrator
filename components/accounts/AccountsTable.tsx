@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { getSegmentTone, getStatusTone } from "@/lib/badgeHelpers";
 import type { AccountListRow } from "@/lib/types";
 
 const COLUMNS = [
@@ -18,12 +19,6 @@ const COLUMNS = [
   "Lifecycle stage",
   "Last signal",
 ];
-
-function scoreTone(score: number): "positive" | "warning" | "neutral" {
-  if (score >= 80) return "positive";
-  if (score >= 65) return "warning";
-  return "neutral";
-}
 
 export function AccountsTable({ rows }: { rows: AccountListRow[] }) {
   const router = useRouter();
@@ -74,7 +69,9 @@ export function AccountsTable({ rows }: { rows: AccountListRow[] }) {
                     <p className="font-semibold text-foreground">{row.name}</p>
                   </td>
                   <td className="px-5 py-4 text-sm text-muted-foreground">{row.domain}</td>
-                  <td className="px-5 py-4 text-sm text-foreground">{row.segment}</td>
+                  <td className="px-5 py-4">
+                    <Badge tone={getSegmentTone(row.segment)}>{row.segment}</Badge>
+                  </td>
                   <td className="px-5 py-4 text-sm text-muted-foreground">—</td>
                   <td className="px-5 py-4 text-sm text-foreground">{row.geography}</td>
                   <td className="px-5 py-4 text-sm text-foreground">{row.owner}</td>
@@ -83,9 +80,7 @@ export function AccountsTable({ rows }: { rows: AccountListRow[] }) {
                       <span className="font-mono text-lg font-semibold text-foreground">
                         {row.score}
                       </span>
-                      <Badge tone={scoreTone(row.score)}>
-                        {row.score >= 80 ? "Hot" : row.score >= 65 ? "Warm" : "Cold"}
-                      </Badge>
+                      <Badge tone={getStatusTone(row.status)}>{row.status}</Badge>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-sm text-foreground">{row.stage}</td>

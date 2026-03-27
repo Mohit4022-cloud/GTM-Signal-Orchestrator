@@ -41,7 +41,7 @@ export function AccountsFilters({
         ]}
       />
 
-      <div className="flex items-center justify-between gap-3 lg:col-span-full">
+      <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-full">
         <div className="flex flex-wrap gap-2">
           {filters.segment ? <Badge tone="neutral">{filters.segment.replaceAll("_", " ")}</Badge> : null}
           {filters.geography ? <Badge tone="neutral">{filters.geography.replaceAll("_", " ")}</Badge> : null}

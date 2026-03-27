@@ -4,6 +4,7 @@ import {
   Radar,
   Route,
   Settings,
+  ShieldAlert,
   SquareKanban,
   Users2,
 } from "lucide-react";
@@ -24,6 +25,13 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Account intelligence and detail",
     implemented: true,
     icon: Building2,
+  },
+  {
+    href: "/unmatched",
+    label: "Unmatched Queue",
+    description: "Signals that failed identity resolution",
+    implemented: true,
+    icon: ShieldAlert,
   },
   {
     href: "/leads",
@@ -70,6 +78,10 @@ const EXPLICIT_META: Record<string, RouteMeta> = {
   "/accounts": {
     title: "Accounts",
     subtitle: "Inspect account fit, ownership, and signal recency across the active portfolio.",
+  },
+  "/unmatched": {
+    title: "Unmatched Queue",
+    subtitle: "Review signals that could not be matched to a known account or contact.",
   },
   "/leads": {
     title: "Leads",

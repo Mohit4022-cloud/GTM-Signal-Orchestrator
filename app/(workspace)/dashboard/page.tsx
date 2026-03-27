@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Activity, AlertTriangle, ArrowRight, Flame, Router, ShieldCheck } from "lucide-react";
 
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
@@ -138,6 +139,16 @@ export default async function DashboardPage() {
                   </p>
                 </div>
               ))}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <Link
+                href="/unmatched"
+                aria-label="View all unmatched signals in the ops review queue"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent/80"
+              >
+                View all unmatched signals
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
             </div>
           </Card>
 

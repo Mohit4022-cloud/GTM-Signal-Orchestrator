@@ -15,11 +15,11 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "GTM Signal Orchestrator",
-    template: "%s | GTM Signal Orchestrator",
+    default: "Open GTM Signal Orchestrator",
+    template: "%s | Open GTM Signal Orchestrator",
   },
   description:
-    "Production-style internal tool for GTM signal orchestration, routing, and account operations.",
+    "Open-source GTM engineering workspace for ingesting buyer signals, scoring accounts, routing leads, and powering operator workflows.",
 };
 
 export default function RootLayout({

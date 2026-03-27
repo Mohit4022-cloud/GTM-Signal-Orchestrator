@@ -1,6 +1,24 @@
 {
   "name": "gtm-signal-orchestrator",
   "version": "0.1.0",
+  "description": "Open-source GTM engineering workspace for ingesting buyer signals, scoring accounts, routing leads, and powering operator workflows.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator.git"
+  },
+  "keywords": [
+    "gtm-engineering",
+    "revops",
+    "sales-ops",
+    "marketing-ops",
+    "lead-routing",
+    "account-scoring",
+    "signal-orchestration",
+    "nextjs",
+    "prisma",
+    "typescript"
+  ],
   "private": true,
   "scripts": {
     "dev": "next dev",

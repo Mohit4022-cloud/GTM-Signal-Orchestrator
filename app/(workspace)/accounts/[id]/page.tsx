@@ -21,7 +21,6 @@ import { AccountHeader } from "@/components/accounts/AccountHeader";
 import { SectionCard } from "@/components/accounts/SectionCard";
 import { TimelineItemCard } from "@/components/signals/TimelineItemCard";
 import { Badge } from "@/components/shared/Badge";
-import { Card } from "@/components/shared/Card";
 import { getTaskPriorityTone } from "@/lib/badgeHelpers";
 import { getAccountDetail } from "@/lib/queries/accounts";
 import type {

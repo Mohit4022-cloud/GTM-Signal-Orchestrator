@@ -25,6 +25,7 @@
 *.pem
 dev.db
 dev.db-journal
+.claude/worktrees/
 
 # debug
 npm-debug.log*

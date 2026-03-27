@@ -11,7 +11,6 @@ import {
   ScoreComponent,
   ScoreEntityType,
   Segment,
-  SignalStatus,
   SignalType,
   TaskPriority,
   TaskStatus,

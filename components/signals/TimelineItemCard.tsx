@@ -20,28 +20,34 @@ import type { TimelineEvent } from "@/lib/types";
 import { SignalSourceBadge } from "./SignalSourceBadge";
 import { SignalStatusBadge } from "./SignalStatusBadge";
 
-// ─── Icon map ───────────────────────────────────────────────────────────────
-
 /**
- * Maps event type title strings to a Lucide icon.
- * Titles are human-readable labels from the backend view model —
- * do not rename or invent new strings here.
+ * Stable icon component keyed from human-readable backend labels.
+ * Keeping the branching inside a component avoids render-time component creation.
  */
-function getEventTypeIcon(title: string): LucideIcon {
-  if (title.includes("Pricing Page")) return TrendingUp;
-  if (title.includes("Website Visit")) return Globe;
-  if (title.includes("High Intent Page")) return Zap;
-  if (title.includes("Form Fill")) return FileText;
-  if (title.includes("Webinar")) return Calendar;
-  if (title.includes("Product Signup")) return UserPlus;
-  if (title.includes("Product Usage")) return BarChart2;
-  if (title.includes("Email Reply")) return Mail;
-  if (title.includes("Meeting Booked")) return CalendarCheck;
-  if (title.includes("Meeting No Show")) return CalendarX;
-  if (title.includes("Intent Event")) return Radar;
-  if (title.includes("Sales Note")) return FileText;
-  if (title.includes("Status Update")) return RefreshCw;
-  return Activity;
+function EventTypeIcon({
+  title,
+  className,
+}: {
+  title: string;
+  className?: string;
+}) {
+  let Icon: LucideIcon = Activity;
+
+  if (title.includes("Pricing Page")) Icon = TrendingUp;
+  else if (title.includes("Website Visit")) Icon = Globe;
+  else if (title.includes("High Intent Page")) Icon = Zap;
+  else if (title.includes("Form Fill")) Icon = FileText;
+  else if (title.includes("Webinar")) Icon = Calendar;
+  else if (title.includes("Product Signup")) Icon = UserPlus;
+  else if (title.includes("Product Usage")) Icon = BarChart2;
+  else if (title.includes("Email Reply")) Icon = Mail;
+  else if (title.includes("Meeting Booked")) Icon = CalendarCheck;
+  else if (title.includes("Meeting No Show")) Icon = CalendarX;
+  else if (title.includes("Intent Event")) Icon = Radar;
+  else if (title.includes("Sales Note")) Icon = FileText;
+  else if (title.includes("Status Update")) Icon = RefreshCw;
+
+  return <Icon className={className} aria-hidden="true" />;
 }
 
 // ─── Dot color map ──────────────────────────────────────────────────────────
@@ -76,7 +82,6 @@ type TimelineItemCardProps = {
  * Design tokens from MASTER.md: inner row card, source chip, badge tones.
  */
 export function TimelineItemCard({ event, isLast }: TimelineItemCardProps) {
-  const EventIcon = getEventTypeIcon(event.title);
   const dotClasses = getDotClasses(event.status);
 
   return (
@@ -100,9 +105,9 @@ export function TimelineItemCard({ event, isLast }: TimelineItemCardProps) {
         {/* Row 1: title + icon on left, status badge on right */}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <EventIcon
+            <EventTypeIcon
+              title={event.title}
               className="size-4 shrink-0 text-muted-foreground"
-              aria-hidden="true"
             />
             <p className="font-semibold text-foreground">{event.title}</p>
           </div>

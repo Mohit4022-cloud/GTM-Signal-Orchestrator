@@ -1,4 +1,4 @@
-import { ArrowRight, Router } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { Badge } from "@/components/shared/Badge";
 import type { RoutingFeedItem } from "@/lib/contracts/data-access";
@@ -28,7 +28,7 @@ export function ActivityFeed({ items }: Props) {
       />
 
       <ul className="space-y-0" role="list">
-        {items.map((item, index) => (
+        {items.map((item) => (
           <li key={item.id} className="relative flex gap-4 py-4">
             {/* Timeline dot */}
             <div

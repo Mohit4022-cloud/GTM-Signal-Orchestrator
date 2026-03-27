@@ -352,7 +352,7 @@ function computeAccountEngagementComponent(input: AccountScoringInput, config: S
   }
 
   if (signalMetrics.engagedContactCount30d >= 2) {
-    remainingCap = addPositiveContribution(
+    addPositiveContribution(
       contributors,
       remainingCap,
       "engagement_multithreaded_contacts",
@@ -577,7 +577,7 @@ function computeLeadEngagementComponent(input: LeadScoringInput, config: Scoring
         ? 2
         : 0;
   if (multithreadPoints > 0) {
-    remainingCap = addPositiveContribution(
+    addPositiveContribution(
       contributors,
       remainingCap,
       "engagement_multithreaded_contacts",

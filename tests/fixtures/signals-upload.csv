@@ -1,0 +1,5 @@
+source_system,event_type,occurred_at,account_domain,contact_email,received_at,payload_json
+website,pricing_page_visit,2026-03-27T10:00:00.000Z,northstaranalytics.com,avery.bennett@northstaranalytics.com,2026-03-27T10:04:00.000Z,"{""page"":""/pricing"",""session_id"":""fixture_upload_1"",""visit_count"":3}"
+website,pricing_page_visit,2026-03-27T10:00:00.000Z,northstaranalytics.com,avery.bennett@northstaranalytics.com,2026-03-27T10:04:00.000Z,"{""page"":""/pricing"",""session_id"":""fixture_upload_1"",""visit_count"":3}"
+product,product_usage_milestone,2026-03-27T10:20:00.000Z,,avery.bennett@northstaranalytics.com,2026-03-27T10:24:00.000Z,"{""workspace_id"":""fixture_workspace_2"",""milestone"":""connected_crm"",""user_id"":""fixture_user_2""}"
+third_party_intent,third_party_intent_event,2026-03-27T10:40:00.000Z,unknown-upload.example.com,,2026-03-27T10:44:00.000Z,"{""provider"":""bombora"",""topic"":""revenue_intelligence"",""intent_id"":""fixture_intent_3""}"

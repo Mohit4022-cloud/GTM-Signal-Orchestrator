@@ -1,11 +1,17 @@
-import { Segment } from "@prisma/client";
+import { Segment, SignalStatus } from "@prisma/client";
 
 import { getAccountById, getAccounts } from "../lib/queries/accounts";
 import {
   getDashboardSummary,
   getHotAccounts,
-  getRecentSignals,
+  getRecentSignals as getDashboardRecentSignals,
 } from "../lib/queries/dashboard";
+import {
+  getAccountTimeline,
+  getRecentSignals,
+  getSignalById,
+  getUnmatchedSignals,
+} from "../lib/data/signals";
 
 const DASHBOARD_KPI_KEYS = [
   "signalsReceivedToday",
@@ -23,16 +29,27 @@ function invariant(condition: unknown, message: string): asserts condition {
 }
 
 async function main() {
-  const [summary, hotAccounts, recentSignals, allAccounts, strategicAccounts, ownerAccounts, hotBucketAccounts] =
-    await Promise.all([
-      getDashboardSummary(),
-      getHotAccounts(),
-      getRecentSignals(),
-      getAccounts(),
-      getAccounts({ segment: Segment.STRATEGIC }),
-      getAccounts({ owner: "usr_elena_morales" }),
-      getAccounts({ scoreBucket: "hot" }),
-    ]);
+  const [
+    summary,
+    hotAccounts,
+    dashboardRecentSignals,
+    signalFeed,
+    unmatchedSignals,
+    allAccounts,
+    strategicAccounts,
+    ownerAccounts,
+    hotBucketAccounts,
+  ] = await Promise.all([
+    getDashboardSummary(),
+    getHotAccounts(),
+    getDashboardRecentSignals(),
+    getRecentSignals(),
+    getUnmatchedSignals(),
+    getAccounts(),
+    getAccounts({ segment: Segment.STRATEGIC }),
+    getAccounts({ owner: "usr_elena_morales" }),
+    getAccounts({ scoreBucket: "hot" }),
+  ]);
 
   invariant(
     summary.kpis.length === DASHBOARD_KPI_KEYS.length,
@@ -80,19 +97,26 @@ async function main() {
     "Hot accounts are not ordered by score, latest signal, then name.",
   );
 
-  invariant(recentSignals.length === 8, `Expected 8 recent signals, found ${recentSignals.length}.`);
+  invariant(signalFeed.length === 8, `Expected 8 recent signal feed rows, found ${signalFeed.length}.`);
   invariant(
-    recentSignals.some((signal) => signal.isUnmatched),
-    "Expected at least one unmatched signal in the recent signal feed.",
+    signalFeed.every((signal) => signal.dedupeKey.length > 0 && signal.normalizedSummary.payloadSummary.length > 0),
+    "Recent signal feed items must include dedupe keys and normalized summaries.",
+  );
+  invariant(
+    signalFeed.some((signal) => signal.status === SignalStatus.UNMATCHED),
+    "Expected at least one unmatched signal in the new recent signal feed.",
   );
 
-  const unmatchedSignal = recentSignals.find((signal) => signal.isUnmatched);
-  invariant(unmatchedSignal, "Expected an unmatched recent signal.");
+  invariant(dashboardRecentSignals.length === 8, `Expected 8 dashboard recent signals, found ${dashboardRecentSignals.length}.`);
   invariant(
-    unmatchedSignal.accountId === null &&
-      unmatchedSignal.contactId === null &&
-      unmatchedSignal.leadId === null,
-    "Unmatched recent signals should preserve null relation fields.",
+    dashboardRecentSignals.some((signal) => signal.isUnmatched),
+    "Expected at least one unmatched signal in the dashboard recent signal feed.",
+  );
+
+  invariant(unmatchedSignals.length >= 10, `Expected at least 10 unmatched signals, found ${unmatchedSignals.length}.`);
+  invariant(
+    unmatchedSignals.every((signal) => signal.reasonCodes.length > 0),
+    "Unmatched queue items must include machine-readable reason codes.",
   );
 
   invariant(allAccounts.rows.length === 20, `Expected 20 accounts, found ${allAccounts.rows.length}.`);
@@ -123,6 +147,27 @@ async function main() {
   invariant(accountDetail.openTasks.length > 0, "Expected account detail open tasks.");
   invariant(accountDetail.scoreBreakdown.length > 0, "Expected account detail score breakdown.");
   invariant(accountDetail.auditLog.length > 0, "Expected account detail audit log.");
+
+  const accountTimeline = await getAccountTimeline("acc_summitflow_finance", { limit: 8 });
+  invariant(accountTimeline.length > 0, "Expected account timeline rows.");
+  invariant(
+    accountTimeline.every((item, index, array) => {
+      if (index === 0) {
+        return true;
+      }
+      return new Date(array[index - 1]!.occurredAtIso).getTime() >= new Date(item.occurredAtIso).getTime();
+    }),
+    "Account timeline is not ordered by occurredAt descending.",
+  );
+  invariant(
+    accountTimeline.every((item) => item.displayTitle.length > 0 && item.displaySubtitle.length > 0),
+    "Account timeline items must include display title and subtitle.",
+  );
+
+  const signalDetail = await getSignalById(unmatchedSignals[0]!.signalId);
+  invariant(signalDetail !== null, "Expected signal detail for unmatched signal.");
+  invariant(signalDetail.reasonCodes.length > 0, "Signal detail must include reason codes.");
+  invariant(signalDetail.auditTrail.length >= 3, "Signal detail must include audit trail entries.");
 
   const missingAccount = await getAccountById("acc_missing");
   invariant(missingAccount === null, "Expected null for a missing account lookup.");

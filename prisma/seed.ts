@@ -19,6 +19,9 @@ import {
   Temperature,
 } from "@prisma/client";
 
+import type { IngestSignalInput } from "../lib/contracts/signals";
+import { ingestSignal } from "../lib/data/signals";
+import { db } from "../lib/db";
 import { sqliteAdapter } from "../lib/prisma-adapter";
 
 const prisma = new PrismaClient({
@@ -485,17 +488,9 @@ const accountBlueprints: readonly AccountBlueprint[] = [
   },
 ] as const;
 
-const requiredSignalTypes = [
-  SignalType.PRICING_PAGE_VISIT,
-  SignalType.FORM_FILL,
-  SignalType.WEBINAR_REGISTRATION,
-  SignalType.PRODUCT_SIGNUP,
-  SignalType.EMAIL_REPLY,
-  SignalType.MEETING_BOOKED,
-  SignalType.HIGH_INTENT_CLUSTER,
-] as const;
+const seededSignalTypes = Object.values(SignalType);
 
-type SeededSignalType = (typeof requiredSignalTypes)[number];
+type SeededSignalType = SignalType;
 type JsonObject = Record<string, string | number | boolean | null>;
 
 const secondaryLeadAccountIds = new Set([
@@ -750,33 +745,61 @@ function getPhoneNumber(geography: Geography, index: number, slot: number) {
   return `${prefix}-555-${String(1000 + index * 10 + slot).padStart(4, "0")}`;
 }
 
-function getSignalSource(eventType: SeededSignalType): string {
+function toIngestSignalType(eventType: SeededSignalType): IngestSignalInput["event_type"] {
   switch (eventType) {
+    case SignalType.WEBSITE_VISIT:
+      return "website_visit";
     case SignalType.PRICING_PAGE_VISIT:
-      return "Website";
+      return "pricing_page_visit";
+    case SignalType.HIGH_INTENT_PAGE_CLUSTER_VISIT:
+      return "high_intent_page_cluster_visit";
     case SignalType.FORM_FILL:
-      return "Marketing Automation";
+      return "form_fill";
     case SignalType.WEBINAR_REGISTRATION:
-      return "Events";
+      return "webinar_registration";
     case SignalType.PRODUCT_SIGNUP:
-      return "Product";
+      return "product_signup";
+    case SignalType.PRODUCT_USAGE_MILESTONE:
+      return "product_usage_milestone";
     case SignalType.EMAIL_REPLY:
-      return "Sales Engagement";
+      return "email_reply";
     case SignalType.MEETING_BOOKED:
-      return "Calendar";
-    case SignalType.HIGH_INTENT_CLUSTER:
-      return "Intent Data";
+      return "meeting_booked";
+    case SignalType.MEETING_NO_SHOW:
+      return "meeting_no_show";
+    case SignalType.THIRD_PARTY_INTENT_EVENT:
+      return "third_party_intent_event";
+    case SignalType.MANUAL_SALES_NOTE:
+      return "manual_sales_note";
+    case SignalType.ACCOUNT_STATUS_UPDATE:
+      return "account_status_update";
   }
 }
 
-function getSignalStatus(eventType: SeededSignalType): SignalStatus {
+function getSignalSourceSystem(eventType: SeededSignalType): string {
   switch (eventType) {
+    case SignalType.WEBSITE_VISIT:
+    case SignalType.PRICING_PAGE_VISIT:
+    case SignalType.HIGH_INTENT_PAGE_CLUSTER_VISIT:
+      return "website";
     case SignalType.FORM_FILL:
+      return "marketing_automation";
+    case SignalType.WEBINAR_REGISTRATION:
+      return "events";
     case SignalType.PRODUCT_SIGNUP:
+    case SignalType.PRODUCT_USAGE_MILESTONE:
+      return "product";
+    case SignalType.EMAIL_REPLY:
+      return "sales_engagement";
     case SignalType.MEETING_BOOKED:
-      return SignalStatus.PROCESSED;
-    default:
-      return SignalStatus.MATCHED;
+    case SignalType.MEETING_NO_SHOW:
+      return "calendar";
+    case SignalType.THIRD_PARTY_INTENT_EVENT:
+      return "third_party_intent";
+    case SignalType.MANUAL_SALES_NOTE:
+      return "sales_note";
+    case SignalType.ACCOUNT_STATUS_UPDATE:
+      return "crm";
   }
 }
 
@@ -784,92 +807,227 @@ function getSignalPayload(
   account: SeededAccount,
   eventType: SeededSignalType,
   index: number,
-): {
-  raw: JsonObject;
-  normalized: JsonObject;
-} {
+): JsonObject {
   switch (eventType) {
+    case SignalType.WEBSITE_VISIT:
+      return {
+        page: index % 2 === 0 ? "/blog/revenue-ops" : "/integrations/salesforce",
+        session_id: `${account.id}_session_${index}`,
+        visit_count: 1 + (index % 3),
+      };
     case SignalType.PRICING_PAGE_VISIT:
       return {
-        raw: {
-          page: "/pricing",
-          visitCount: 2 + (index % 3),
-          utmSource: account.segment === Segment.SMB ? "paid-search" : "direct",
-        },
-        normalized: {
-          pageCluster: "pricing",
-          signalStrength: account.status === AccountStatus.HOT ? "high" : "medium",
-        },
+        page: "/pricing",
+        session_id: `${account.id}_pricing_${index}`,
+        visit_count: 2 + (index % 3),
+      };
+    case SignalType.HIGH_INTENT_PAGE_CLUSTER_VISIT:
+      return {
+        page_cluster: "pricing,security,integrations",
+        session_id: `${account.id}_cluster_${index}`,
       };
     case SignalType.FORM_FILL:
       return {
-        raw: {
-          formId: "request-demo",
-          campaign: account.industry.toLowerCase().replace(/\s+/g, "-"),
-          persona: "operations",
-        },
-        normalized: {
-          conversionType: "demo-request",
-          signalStrength: "high",
-        },
+        form_id: "request_demo",
+        submission_id: `${account.id}_form_${index}`,
+        campaign: account.industry.toLowerCase().replace(/\s+/g, "-"),
+        persona: "operations",
       };
     case SignalType.WEBINAR_REGISTRATION:
       return {
-        raw: {
-          webinar: "Signal orchestration benchmark",
-          attendanceIntent: account.segment === Segment.STRATEGIC ? "executive-track" : "operator-track",
-        },
-        normalized: {
-          eventMotion: "education",
-          signalStrength: "medium",
-        },
+        webinar_name: "Signal orchestration benchmark",
+        webinar_id: `webinar_${(index % 4) + 1}`,
+        registration_id: `${account.id}_registration_${index}`,
+        campaign: "q1_recruiter_demo",
       };
     case SignalType.PRODUCT_SIGNUP:
       return {
-        raw: {
-          workspacePlan: account.segment === Segment.SMB ? "trial" : "pilot",
-          seatRequest: 3 + (index % 5),
-        },
-        normalized: {
-          activationStage: "workspace-created",
-          signalStrength: "high",
-        },
+        workspace_id: `${account.id}_workspace`,
+        signup_id: `${account.id}_signup_${index}`,
+        plan: account.segment === Segment.SMB ? "trial" : "pilot",
+      };
+    case SignalType.PRODUCT_USAGE_MILESTONE:
+      return {
+        workspace_id: `${account.id}_workspace`,
+        milestone: index % 2 === 0 ? "connected_crm" : "invited_teammates",
+        user_id: `${account.id}_user_${index}`,
       };
     case SignalType.EMAIL_REPLY:
       return {
-        raw: {
-          threadTopic: "follow-up on routing visibility",
-          replyTone: index % 2 === 0 ? "positive" : "curious",
-        },
-        normalized: {
-          engagementStage: "two-way-conversation",
-          signalStrength: "medium",
-        },
+        thread_id: `${account.id}_thread_${index}`,
+        message_id: `${account.id}_message_${index}`,
+        subject: "Routing visibility follow-up",
       };
     case SignalType.MEETING_BOOKED:
       return {
-        raw: {
-          meetingType: account.segment === Segment.STRATEGIC ? "exec-review" : "discovery-call",
-          attendees: 2 + (index % 3),
-        },
-        normalized: {
-          engagementStage: "meeting-booked",
-          signalStrength: "high",
-        },
+        meeting_id: `${account.id}_meeting_${index}`,
+        calendar_event_id: `${account.id}_calendar_${index}`,
+        meeting_type: account.segment === Segment.STRATEGIC ? "exec_review" : "discovery_call",
       };
-    case SignalType.HIGH_INTENT_CLUSTER:
+    case SignalType.MEETING_NO_SHOW:
       return {
-        raw: {
-          provider: "Bombora",
-          topic: account.industry === "Manufacturing" ? "sales forecasting" : "revenue intelligence",
-          intensity: 72 + index,
-        },
-        normalized: {
-          intentTopic: "go-to-market orchestration",
-          signalStrength: "high",
-        },
+        meeting_id: `${account.id}_meeting_no_show_${index}`,
+        calendar_event_id: `${account.id}_calendar_no_show_${index}`,
+        meeting_type: "follow_up_demo",
+      };
+    case SignalType.THIRD_PARTY_INTENT_EVENT:
+      return {
+        provider: "bombora",
+        topic: account.industry === "Manufacturing" ? "sales_forecasting" : "revenue_intelligence",
+        intent_id: `${account.id}_intent_${index}`,
+      };
+    case SignalType.MANUAL_SALES_NOTE:
+      return {
+        note_id: `${account.id}_note_${index}`,
+        author_id: account.namedOwnerId ?? getFallbackLeadOwner(account.geography),
+        note_subject: "AE field note",
+      };
+    case SignalType.ACCOUNT_STATUS_UPDATE:
+      return {
+        status_change_id: `${account.id}_status_${index}`,
+        previous_status: account.lifecycleStage.toLowerCase(),
+        new_status: account.status === AccountStatus.HOT ? "exec_attention" : "monitoring",
       };
   }
+}
+
+function buildMatchedSignalInputs(accounts: SeededAccount[], contacts: SeededContact[]): IngestSignalInput[] {
+  return accounts.flatMap((account, accountIndex) => {
+    const accountContacts = contacts.filter((contact) => contact.accountId === account.id);
+    const signalCount = account.status === AccountStatus.HOT ? 6 : 4;
+    const dayOffsets = account.status === AccountStatus.HOT ? [12, 9, 6, 4, 2, 0] : [11, 8, 4, 1];
+
+    return Array.from({ length: signalCount }, (_, signalIndex) => {
+      const eventType = seededSignalTypes[(accountIndex + signalIndex) % seededSignalTypes.length]!;
+      const contact = accountContacts[signalIndex % accountContacts.length]!;
+      const occurredAt = addMinutes(
+        subDays(baseDate, dayOffsets[signalIndex]!),
+        accountIndex * 13 + signalIndex * 17,
+      );
+      const receivedAt = addMinutes(occurredAt, 5 + ((accountIndex + signalIndex) % 3) * 6);
+      const includeDomain =
+        eventType !== SignalType.PRODUCT_USAGE_MILESTONE && eventType !== SignalType.EMAIL_REPLY;
+      const includeEmail =
+        eventType !== SignalType.MANUAL_SALES_NOTE && eventType !== SignalType.ACCOUNT_STATUS_UPDATE;
+
+      return {
+        source_system: getSignalSourceSystem(eventType),
+        event_type: toIngestSignalType(eventType),
+        account_domain: includeDomain ? account.domain : undefined,
+        contact_email: includeEmail ? contact.email : undefined,
+        occurred_at: occurredAt.toISOString(),
+        received_at: receivedAt.toISOString(),
+        payload: getSignalPayload(account, eventType, signalIndex),
+      };
+    });
+  });
+}
+
+function buildUnmatchedSignalInputs(
+  accounts: SeededAccount[],
+  contacts: SeededContact[],
+): IngestSignalInput[] {
+  const conflictingContactOne = contacts.find((contact) => contact.accountId === accounts[4]!.id)!;
+  const conflictingContactTwo = contacts.find((contact) => contact.accountId === accounts[7]!.id)!;
+
+  return [
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      contact_email: `ghost-1@${accounts[0]!.domain}`,
+      occurred_at: subMinutes(baseDate, 110).toISOString(),
+      received_at: subMinutes(baseDate, 104).toISOString(),
+      payload: { page: "/pricing", session_id: "ghost_session_1", visit_count: 3 },
+    },
+    {
+      source_system: "marketing_automation",
+      event_type: "form_fill",
+      contact_email: `ghost-2@${accounts[1]!.domain}`,
+      occurred_at: subMinutes(baseDate, 104).toISOString(),
+      received_at: subMinutes(baseDate, 100).toISOString(),
+      payload: { form_id: "request_demo", submission_id: "ghost_form_2" },
+    },
+    {
+      source_system: "sales_engagement",
+      event_type: "email_reply",
+      contact_email: `ghost-3@${accounts[2]!.domain}`,
+      occurred_at: subMinutes(baseDate, 98).toISOString(),
+      received_at: subMinutes(baseDate, 94).toISOString(),
+      payload: { thread_id: "ghost_thread_3", message_id: "ghost_message_3", subject: "Unknown contact" },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      contact_email: `ghost-4@${accounts[3]!.domain}`,
+      occurred_at: subMinutes(baseDate, 92).toISOString(),
+      received_at: subMinutes(baseDate, 86).toISOString(),
+      payload: { workspace_id: "ghost_workspace_4", milestone: "activated" },
+    },
+    {
+      source_system: "website",
+      event_type: "website_visit",
+      account_domain: "unknown-stage-two-1.example.com",
+      occurred_at: subMinutes(baseDate, 86).toISOString(),
+      received_at: subMinutes(baseDate, 82).toISOString(),
+      payload: { page: "/docs", session_id: "unknown_domain_1" },
+    },
+    {
+      source_system: "third_party_intent",
+      event_type: "third_party_intent_event",
+      account_domain: "unknown-stage-two-2.example.com",
+      occurred_at: subMinutes(baseDate, 80).toISOString(),
+      received_at: subMinutes(baseDate, 75).toISOString(),
+      payload: { provider: "bombora", topic: "revenue_intelligence", intent_id: "ghost_intent_2" },
+    },
+    {
+      source_system: "sales_note",
+      event_type: "manual_sales_note",
+      account_domain: "unknown-stage-two-3.example.com",
+      occurred_at: subMinutes(baseDate, 74).toISOString(),
+      received_at: subMinutes(baseDate, 70).toISOString(),
+      payload: { note_id: "ghost_note_3", author_id: "usr_priya_singh", note_subject: "Unknown account" },
+    },
+    {
+      source_system: "crm",
+      event_type: "account_status_update",
+      account_domain: "unknown-stage-two-4.example.com",
+      occurred_at: subMinutes(baseDate, 68).toISOString(),
+      received_at: subMinutes(baseDate, 62).toISOString(),
+      payload: { status_change_id: "ghost_status_4", previous_status: "engaged", new_status: "unknown" },
+    },
+    {
+      source_system: "website",
+      event_type: "website_visit",
+      occurred_at: subMinutes(baseDate, 62).toISOString(),
+      received_at: subMinutes(baseDate, 58).toISOString(),
+      payload: { page: "/security", session_id: "anonymous_1" },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_no_show",
+      occurred_at: subMinutes(baseDate, 56).toISOString(),
+      received_at: subMinutes(baseDate, 52).toISOString(),
+      payload: { meeting_id: "anonymous_meeting_2", calendar_event_id: "anonymous_calendar_2", meeting_type: "demo" },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_booked",
+      account_domain: accounts[4]!.domain,
+      contact_email: conflictingContactTwo.email,
+      occurred_at: subMinutes(baseDate, 50).toISOString(),
+      received_at: subMinutes(baseDate, 46).toISOString(),
+      payload: { meeting_id: "conflict_meeting_1", calendar_event_id: "conflict_calendar_1", meeting_type: "exec_review" },
+    },
+    {
+      source_system: "marketing_automation",
+      event_type: "webinar_registration",
+      account_domain: accounts[7]!.domain,
+      contact_email: conflictingContactOne.email,
+      occurred_at: subMinutes(baseDate, 44).toISOString(),
+      received_at: subMinutes(baseDate, 40).toISOString(),
+      payload: { webinar_name: "Signal orchestration benchmark", webinar_id: "conflict_webinar_2", registration_id: "conflict_registration_2" },
+    },
+  ];
 }
 
 function getLeadInboundType(source: string) {
@@ -1070,75 +1228,16 @@ async function main() {
 
   await prisma.lead.createMany({ data: leads });
 
-  const signalEvents = [
-    ...accounts.flatMap((account, index) => {
-      const accountContacts = contacts.filter((contact) => contact.accountId === account.id);
-      const accountLeads = leads.filter((lead) => lead.accountId === account.id);
-      const signalTypes =
-        account.status === AccountStatus.HOT
-          ? [...requiredSignalTypes]
-          : Array.from({ length: 4 }, (_, offset) => {
-              return requiredSignalTypes[(index + offset) % requiredSignalTypes.length];
-            });
-      const dayOffsets = account.status === AccountStatus.HOT ? [11, 8, 6, 4, 2, 1, 0] : [12, 8, 4, 1];
+  const matchedSignalInputs = buildMatchedSignalInputs(accounts, contacts);
+  const unmatchedSignalInputs = buildUnmatchedSignalInputs(accounts, contacts);
+  const seededSignalInputs = [...matchedSignalInputs, ...unmatchedSignalInputs];
 
-      return signalTypes.map((eventType, signalIndex) => {
-        const signalPayload = getSignalPayload(account, eventType, signalIndex);
-        const contact = accountContacts[signalIndex % accountContacts.length];
-        const lead = accountLeads[signalIndex % accountLeads.length];
-        const occurredAt = addMinutes(
-          subDays(baseDate, dayOffsets[signalIndex]),
-          index * 13 + signalIndex * 17,
-        );
-        const receivedAt = addMinutes(occurredAt, signalIndex % 2 === 0 ? 6 : 18);
-
-        return {
-          id: `${account.id}_signal_${String(signalIndex + 1).padStart(2, "0")}`,
-          sourceSystem: getSignalSource(eventType),
-          eventType,
-          accountId: account.id,
-          contactId: contact.id,
-          leadId: lead?.id ?? null,
-          rawPayloadJson: signalPayload.raw,
-          normalizedPayloadJson: signalPayload.normalized,
-          occurredAt,
-          receivedAt,
-          dedupeKey: `${account.id}_${eventType}_${signalIndex + 1}`,
-          status: getSignalStatus(eventType),
-        };
-      });
-    }),
-    ...Array.from({ length: 5 }, (_, index) => {
-      const account = accounts[index]!;
-      const eventType = requiredSignalTypes[index]!;
-      const payload = getSignalPayload(account, eventType, index);
-      const occurredAt = subMinutes(baseDate, 45 + index * 22);
-      return {
-        id: `sig_unmatched_${String(index + 1).padStart(2, "0")}`,
-        sourceSystem: getSignalSource(eventType),
-        eventType,
-        accountId: null,
-        contactId: null,
-        leadId: null,
-        rawPayloadJson: {
-          ...payload.raw,
-          email: `unknown+${index + 1}@${account.domain}`,
-          accountDomain: account.domain,
-        },
-        normalizedPayloadJson: {
-          ...payload.normalized,
-          matchConfidence: "low",
-          recommendedQueue: "ops-review",
-        },
-        occurredAt,
-        receivedAt: addMinutes(occurredAt, 4),
-        dedupeKey: `unmatched_${index + 1}`,
-        status: SignalStatus.UNMATCHED,
-      };
-    }),
-  ];
-
-  await prisma.signalEvent.createMany({ data: signalEvents });
+  for (const signalInput of seededSignalInputs) {
+    const result = await ingestSignal(signalInput);
+    if (!result.created) {
+      throw new Error(`Seed signal dedupe collision detected for ${signalInput.event_type}.`);
+    }
+  }
 
   const accountById = new Map(accounts.map((account) => [account.id, account]));
 
@@ -1316,7 +1415,7 @@ async function main() {
 
   const auditLogs = accounts.flatMap((account, index) => {
     const primaryLead = leads.find((lead) => lead.accountId === account.id && lead.id.endsWith("_lead_01"))!;
-    const signalCount = account.status === AccountStatus.HOT ? 7 : 4;
+    const signalCount = account.status === AccountStatus.HOT ? 6 : 4;
 
     return [
       {
@@ -1329,7 +1428,7 @@ async function main() {
         accountId: account.id,
         leadId: primaryLead.id,
         beforeState: Prisma.JsonNull,
-        afterState: { signalCount, mostRecentSource: signalCount === 7 ? "Calendar" : "Website" },
+        afterState: { signalCount, mostRecentSource: signalCount === 6 ? "Calendar" : "Website" },
         explanation: "Recent account activity was normalized and attached to the unified account timeline.",
         createdAt: subDays(baseDate, 3),
       },
@@ -1418,7 +1517,7 @@ async function main() {
   });
 
   console.log(
-    "Seeded GTM Signal Orchestrator demo data: 8 users, 20 accounts, 40 contacts, 30 leads, 100 signal events, and 40 tasks.",
+    `Seeded GTM Signal Orchestrator demo data: 8 users, 20 accounts, 40 contacts, 30 leads, ${seededSignalInputs.length} signal events, and 40 tasks.`,
   );
 }
 
@@ -1428,5 +1527,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await Promise.all([prisma.$disconnect(), db.$disconnect()]);
   });

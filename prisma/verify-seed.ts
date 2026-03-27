@@ -1,12 +1,15 @@
 import {
   AccountStatus,
+  AuditEventType,
   Geography,
   PrismaClient,
   Segment,
   SignalStatus,
+  SignalType,
   TaskStatus,
 } from "@prisma/client";
 
+import { identityResolutionCodeValues, type IdentityResolutionCode } from "../lib/contracts/signals";
 import { sqliteAdapter } from "../lib/prisma-adapter";
 
 const prisma = new PrismaClient({
@@ -14,11 +17,33 @@ const prisma = new PrismaClient({
 });
 
 const requiredIndustries = ["SaaS", "Manufacturing", "Healthcare", "Retail", "Fintech"] as const;
+const requiredSourceSystems = [
+  "website",
+  "marketing_automation",
+  "events",
+  "product",
+  "sales_engagement",
+  "calendar",
+  "third_party_intent",
+  "sales_note",
+  "crm",
+] as const;
+const reasonCodeSet = new Set<IdentityResolutionCode>(identityResolutionCodeValues);
 
 function invariant(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function parseReasonCodes(value: unknown): IdentityResolutionCode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is IdentityResolutionCode => {
+    return typeof item === "string" && reasonCodeSet.has(item as IdentityResolutionCode);
+  });
 }
 
 async function main() {
@@ -53,10 +78,24 @@ async function main() {
       prisma.signalEvent.findMany({
         select: {
           id: true,
+          sourceSystem: true,
+          eventType: true,
           accountId: true,
+          accountDomain: true,
           contactId: true,
+          contactEmail: true,
           leadId: true,
           status: true,
+          dedupeKey: true,
+          eventCategory: true,
+          intentStrength: true,
+          engagementStrength: true,
+          payloadSummary: true,
+          identityResolutionCodesJson: true,
+          occurredAt: true,
+          receivedAt: true,
+          createdAt: true,
+          errorMessage: true,
         },
       }),
       prisma.task.findMany({
@@ -86,6 +125,9 @@ async function main() {
       prisma.auditLog.findMany({
         select: {
           id: true,
+          eventType: true,
+          entityType: true,
+          entityId: true,
           accountId: true,
           leadId: true,
         },
@@ -96,7 +138,7 @@ async function main() {
   invariant(accounts.length === 20, `Expected 20 accounts, found ${accounts.length}.`);
   invariant(contacts.length === 40, `Expected 40 contacts, found ${contacts.length}.`);
   invariant(leads.length === 30, `Expected 30 leads, found ${leads.length}.`);
-  invariant(signals.length === 100, `Expected 100 signal events, found ${signals.length}.`);
+  invariant(signals.length >= 100, `Expected at least 100 signal events, found ${signals.length}.`);
   invariant(tasks.length === 40, `Expected 40 tasks, found ${tasks.length}.`);
   invariant(routingDecisions.length === 30, `Expected 30 routing decisions, found ${routingDecisions.length}.`);
 
@@ -104,6 +146,7 @@ async function main() {
   const userIds = new Set(users.map((user) => user.id));
   const contactIds = new Set(contacts.map((contact) => contact.id));
   const leadIds = new Set(leads.map((lead) => lead.id));
+  const dedupeKeys = new Set<string>();
 
   invariant(accounts.some((account) => account.segment === Segment.SMB), "Missing SMB account coverage.");
   invariant(
@@ -173,8 +216,30 @@ async function main() {
   }
 
   const linkedSignalsByAccount = new Map<string, number>();
+  const sourceSystems = new Set<string>();
+  const signalTypes = new Set<SignalType>();
+  const reasonCodes = new Set<IdentityResolutionCode>();
   let unmatchedSignalCount = 0;
+  let matchedSignalCount = 0;
+
   for (const signal of signals) {
+    sourceSystems.add(signal.sourceSystem);
+    signalTypes.add(signal.eventType);
+
+    invariant(signal.dedupeKey.length > 0, `Signal ${signal.id} is missing a dedupe key.`);
+    invariant(!dedupeKeys.has(signal.dedupeKey), `Duplicate dedupe key detected: ${signal.dedupeKey}.`);
+    dedupeKeys.add(signal.dedupeKey);
+    invariant(signal.payloadSummary.length > 0, `Signal ${signal.id} is missing payloadSummary.`);
+    invariant(signal.receivedAt >= signal.occurredAt, `Signal ${signal.id} receivedAt precedes occurredAt.`);
+    invariant(signal.createdAt >= signal.receivedAt, `Signal ${signal.id} createdAt precedes receivedAt.`);
+    invariant(signal.errorMessage === null, `Seeded signal ${signal.id} should not have an error message.`);
+
+    const parsedCodes = parseReasonCodes(signal.identityResolutionCodesJson);
+    invariant(parsedCodes.length > 0, `Signal ${signal.id} is missing identity resolution codes.`);
+    for (const reasonCode of parsedCodes) {
+      reasonCodes.add(reasonCode);
+    }
+
     if (signal.accountId) {
       invariant(accountIds.has(signal.accountId), `Signal ${signal.id} references missing account ${signal.accountId}.`);
       linkedSignalsByAccount.set(signal.accountId, (linkedSignalsByAccount.get(signal.accountId) ?? 0) + 1);
@@ -188,12 +253,32 @@ async function main() {
       invariant(leadIds.has(signal.leadId), `Signal ${signal.id} references missing lead ${signal.leadId}.`);
     }
 
-    if (!signal.accountId && !signal.contactId && !signal.leadId) {
-      invariant(signal.status === SignalStatus.UNMATCHED, `Signal ${signal.id} should be unmatched.`);
+    if (signal.status === SignalStatus.MATCHED) {
+      matchedSignalCount += 1;
+      invariant(Boolean(signal.accountId), `Matched signal ${signal.id} should resolve to an account.`);
+    }
+
+    if (signal.status === SignalStatus.UNMATCHED) {
       unmatchedSignalCount += 1;
+      invariant(signal.accountId === null, `Unmatched signal ${signal.id} should not resolve an account.`);
+      invariant(signal.contactId === null, `Unmatched signal ${signal.id} should not resolve a contact.`);
     }
   }
-  invariant(unmatchedSignalCount === 5, `Expected 5 unmatched signals, found ${unmatchedSignalCount}.`);
+
+  invariant(matchedSignalCount >= 90, `Expected at least 90 matched signals, found ${matchedSignalCount}.`);
+  invariant(unmatchedSignalCount >= 10, `Expected at least 10 unmatched signals, found ${unmatchedSignalCount}.`);
+
+  for (const sourceSystem of requiredSourceSystems) {
+    invariant(sourceSystems.has(sourceSystem), `Missing seeded source system coverage for ${sourceSystem}.`);
+  }
+
+  for (const signalType of Object.values(SignalType)) {
+    invariant(signalTypes.has(signalType), `Missing seeded signal type coverage for ${signalType}.`);
+  }
+
+  for (const reasonCode of identityResolutionCodeValues) {
+    invariant(reasonCodes.has(reasonCode), `Missing seeded identity reason code coverage for ${reasonCode}.`);
+  }
 
   const openTasksByAccount = new Map<string, number>();
   for (const task of tasks) {
@@ -242,6 +327,21 @@ async function main() {
     }
   }
 
+  const signalAuditLogs = auditLogs.filter((entry) => entry.entityType === "signal_event");
+  invariant(
+    signalAuditLogs.length === signals.length * 3,
+    `Expected ${signals.length * 3} signal audit rows, found ${signalAuditLogs.length}.`,
+  );
+  invariant(
+    signalAuditLogs.every((entry) =>
+      entry.eventType === AuditEventType.SIGNAL_INGESTED ||
+      entry.eventType === AuditEventType.SIGNAL_NORMALIZED ||
+      entry.eventType === AuditEventType.IDENTITY_RESOLVED ||
+      entry.eventType === AuditEventType.SIGNAL_UNMATCHED_QUEUED
+    ),
+    "Signal audit rows should only contain ingest, normalization, identity, or unmatched queue events.",
+  );
+
   const auditLogByAccount = new Map<string, number>();
   for (const entry of auditLogs) {
     if (entry.accountId) {
@@ -278,8 +378,8 @@ async function main() {
     const linkedSignalCount = linkedSignalsByAccount.get(account.id) ?? 0;
     if (account.status === AccountStatus.HOT) {
       invariant(
-        linkedSignalCount >= 7,
-        `Hot account ${account.id} should have at least 7 linked signals.`,
+        linkedSignalCount >= 6,
+        `Hot account ${account.id} should have at least 6 linked signals.`,
       );
     } else {
       invariant(

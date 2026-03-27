@@ -161,12 +161,14 @@ async function main() {
 
   const leadsByAccount = new Map<string, number>();
   for (const lead of leads) {
+    const contactId = lead.contactId;
+    const ownerId = lead.currentOwnerId;
+
     invariant(accountIds.has(lead.accountId), `Lead ${lead.id} references missing account ${lead.accountId}.`);
-    invariant(contactIds.has(lead.contactId), `Lead ${lead.id} references missing contact ${lead.contactId}.`);
-    invariant(
-      userIds.has(lead.currentOwnerId),
-      `Lead ${lead.id} references missing owner ${lead.currentOwnerId}.`,
-    );
+    invariant(contactId !== null, `Lead ${lead.id} is missing a contact reference.`);
+    invariant(contactIds.has(contactId), `Lead ${lead.id} references missing contact ${contactId}.`);
+    invariant(ownerId !== null, `Lead ${lead.id} is missing an owner reference.`);
+    invariant(userIds.has(ownerId), `Lead ${lead.id} references missing owner ${ownerId}.`);
     leadsByAccount.set(lead.accountId, (leadsByAccount.get(lead.accountId) ?? 0) + 1);
   }
 

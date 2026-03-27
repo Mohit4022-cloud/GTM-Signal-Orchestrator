@@ -99,7 +99,7 @@ type SeededLead = {
   updatedAt: Date;
 };
 
-const userSeed = [
+const userSeed: Prisma.UserCreateManyInput[] = [
   {
     id: "usr_amelia_ross",
     name: "Amelia Ross",
@@ -180,7 +180,7 @@ const userSeed = [
     title: "Enterprise Account Executive",
     avatarColor: "#c2410c",
   },
-] as const;
+];
 
 const accountBlueprints: readonly AccountBlueprint[] = [
   {
@@ -495,6 +495,9 @@ const requiredSignalTypes = [
   SignalType.HIGH_INTENT_CLUSTER,
 ] as const;
 
+type SeededSignalType = (typeof requiredSignalTypes)[number];
+type JsonObject = Record<string, string | number | boolean | null>;
+
 const secondaryLeadAccountIds = new Set([
   "acc_northstar_analytics",
   "acc_summitflow_finance",
@@ -747,7 +750,7 @@ function getPhoneNumber(geography: Geography, index: number, slot: number) {
   return `${prefix}-555-${String(1000 + index * 10 + slot).padStart(4, "0")}`;
 }
 
-function getSignalSource(eventType: SignalType) {
+function getSignalSource(eventType: SeededSignalType): string {
   switch (eventType) {
     case SignalType.PRICING_PAGE_VISIT:
       return "Website";
@@ -766,7 +769,7 @@ function getSignalSource(eventType: SignalType) {
   }
 }
 
-function getSignalStatus(eventType: SignalType) {
+function getSignalStatus(eventType: SeededSignalType): SignalStatus {
   switch (eventType) {
     case SignalType.FORM_FILL:
     case SignalType.PRODUCT_SIGNUP:
@@ -777,7 +780,14 @@ function getSignalStatus(eventType: SignalType) {
   }
 }
 
-function getSignalPayload(account: SeededAccount, eventType: SignalType, index: number) {
+function getSignalPayload(
+  account: SeededAccount,
+  eventType: SeededSignalType,
+  index: number,
+): {
+  raw: JsonObject;
+  normalized: JsonObject;
+} {
   switch (eventType) {
     case SignalType.PRICING_PAGE_VISIT:
       return {
@@ -1099,8 +1109,9 @@ async function main() {
       });
     }),
     ...Array.from({ length: 5 }, (_, index) => {
-      const eventType = requiredSignalTypes[index];
-      const payload = getSignalPayload(accounts[index], eventType, index);
+      const account = accounts[index]!;
+      const eventType = requiredSignalTypes[index]!;
+      const payload = getSignalPayload(account, eventType, index);
       const occurredAt = subMinutes(baseDate, 45 + index * 22);
       return {
         id: `sig_unmatched_${String(index + 1).padStart(2, "0")}`,
@@ -1111,8 +1122,8 @@ async function main() {
         leadId: null,
         rawPayloadJson: {
           ...payload.raw,
-          email: `unknown+${index + 1}@${accounts[index].domain}`,
-          accountDomain: accounts[index].domain,
+          email: `unknown+${index + 1}@${account.domain}`,
+          accountDomain: account.domain,
         },
         normalizedPayloadJson: {
           ...payload.normalized,

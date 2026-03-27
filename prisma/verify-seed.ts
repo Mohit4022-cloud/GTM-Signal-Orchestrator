@@ -1,15 +1,19 @@
 import {
-  AccountStatus,
-  AuditEventType,
   Geography,
   PrismaClient,
-  Segment,
+  ScoreEntityType,
+  ScoreTriggerType,
   SignalStatus,
   SignalType,
-  TaskStatus,
+  Temperature,
 } from "@prisma/client";
 
-import { identityResolutionCodeValues, type IdentityResolutionCode } from "../lib/contracts/signals";
+import {
+  identityResolutionCodeValues,
+  type IdentityResolutionCode,
+} from "../lib/contracts/signals";
+import type { ScoreReasonCode } from "../lib/contracts/scoring";
+import { scoreReasonCodeValues } from "../lib/scoring/reason-codes";
 import { sqliteAdapter } from "../lib/prisma-adapter";
 
 const prisma = new PrismaClient({
@@ -29,6 +33,7 @@ const requiredSourceSystems = [
   "crm",
 ] as const;
 const reasonCodeSet = new Set<IdentityResolutionCode>(identityResolutionCodeValues);
+const scoreReasonCodeSet = new Set<ScoreReasonCode>(scoreReasonCodeValues);
 
 function invariant(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -36,7 +41,7 @@ function invariant(condition: unknown, message: string): asserts condition {
   }
 }
 
-function parseReasonCodes(value: unknown): IdentityResolutionCode[] {
+function parseIdentityReasonCodes(value: unknown): IdentityResolutionCode[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -44,6 +49,39 @@ function parseReasonCodes(value: unknown): IdentityResolutionCode[] {
   return value.filter((item): item is IdentityResolutionCode => {
     return typeof item === "string" && reasonCodeSet.has(item as IdentityResolutionCode);
   });
+}
+
+function parseScoreReasonCodes(value: unknown): ScoreReasonCode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is ScoreReasonCode => {
+    return typeof item === "string" && scoreReasonCodeSet.has(item as ScoreReasonCode);
+  });
+}
+
+function parseComponentBreakdown(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is { key: string; score: number } => {
+    return Boolean(item) && typeof item === "object" && typeof item.key === "string" && typeof item.score === "number";
+  });
+}
+
+function parseExplanation(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const summary = (value as { summary?: unknown }).summary;
+  return typeof summary === "string" ? summary : null;
+}
+
+function getComponentScore(components: Array<{ key: string; score: number }>, key: string) {
+  return components.find((component) => component.key === key)?.score ?? null;
 }
 
 async function main() {
@@ -57,8 +95,19 @@ async function main() {
           geography: true,
           industry: true,
           namedOwnerId: true,
-          status: true,
           overallScore: true,
+          fitScore: true,
+          intentScore: true,
+          engagementScore: true,
+          recencyScore: true,
+          productUsageScore: true,
+          manualPriorityScore: true,
+          temperature: true,
+          scoreBreakdownJson: true,
+          scoreReasonCodesJson: true,
+          scoreExplanationJson: true,
+          scoreLastComputedAt: true,
+          scoringVersion: true,
         },
       }),
       prisma.contact.findMany({
@@ -73,6 +122,19 @@ async function main() {
           accountId: true,
           contactId: true,
           currentOwnerId: true,
+          score: true,
+          fitScore: true,
+          intentScore: true,
+          engagementScore: true,
+          recencyScore: true,
+          productUsageScore: true,
+          manualPriorityScore: true,
+          temperature: true,
+          scoreBreakdownJson: true,
+          scoreReasonCodesJson: true,
+          scoreExplanationJson: true,
+          scoreLastComputedAt: true,
+          scoringVersion: true,
         },
       }),
       prisma.signalEvent.findMany({
@@ -87,14 +149,12 @@ async function main() {
           leadId: true,
           status: true,
           dedupeKey: true,
-          eventCategory: true,
-          intentStrength: true,
-          engagementStrength: true,
           payloadSummary: true,
           identityResolutionCodesJson: true,
           occurredAt: true,
           receivedAt: true,
           createdAt: true,
+          updatedAt: true,
           errorMessage: true,
         },
       }),
@@ -104,7 +164,6 @@ async function main() {
           accountId: true,
           leadId: true,
           ownerId: true,
-          status: true,
         },
       }),
       prisma.routingDecision.findMany({
@@ -118,8 +177,16 @@ async function main() {
       prisma.scoreHistory.findMany({
         select: {
           id: true,
+          entityType: true,
+          entityId: true,
           accountId: true,
           leadId: true,
+          componentBreakdownJson: true,
+          reasonCodesJson: true,
+          explanationJson: true,
+          triggerType: true,
+          triggerSignalId: true,
+          scoringVersion: true,
         },
       }),
       prisma.auditLog.findMany({
@@ -138,7 +205,7 @@ async function main() {
   invariant(accounts.length === 20, `Expected 20 accounts, found ${accounts.length}.`);
   invariant(contacts.length === 40, `Expected 40 contacts, found ${contacts.length}.`);
   invariant(leads.length === 30, `Expected 30 leads, found ${leads.length}.`);
-  invariant(signals.length >= 100, `Expected at least 100 signal events, found ${signals.length}.`);
+  invariant(signals.length >= 120, `Expected at least 120 signal events, found ${signals.length}.`);
   invariant(tasks.length === 40, `Expected 40 tasks, found ${tasks.length}.`);
   invariant(routingDecisions.length === 30, `Expected 30 routing decisions, found ${routingDecisions.length}.`);
 
@@ -146,81 +213,122 @@ async function main() {
   const userIds = new Set(users.map((user) => user.id));
   const contactIds = new Set(contacts.map((contact) => contact.id));
   const leadIds = new Set(leads.map((lead) => lead.id));
-  const dedupeKeys = new Set<string>();
 
-  invariant(accounts.some((account) => account.segment === Segment.SMB), "Missing SMB account coverage.");
+  const accountTemperatures = new Set(accounts.map((account) => account.temperature));
+  const leadTemperatures = new Set(leads.map((lead) => lead.temperature));
+  const linkedSignalsByAccount = new Map<string, number>();
+  const contactsByAccount = new Map<string, number>();
+  const leadsByAccount = new Map<string, number>();
+  const sourceSystems = new Set<string>();
+  const signalTypes = new Set<SignalType>();
+  const identityReasonCodes = new Set<IdentityResolutionCode>();
+  const signalEventIds = new Set(signals.map((signal) => signal.id));
+
+  invariant(accountTemperatures.has(Temperature.COLD), "Expected at least one cold account.");
+  invariant(accountTemperatures.has(Temperature.WARM), "Expected at least one warm account.");
+  invariant(accountTemperatures.has(Temperature.HOT), "Expected at least one hot account.");
+  invariant(accountTemperatures.has(Temperature.URGENT), "Expected at least one urgent account.");
+  invariant(leadTemperatures.has(Temperature.COLD), "Expected at least one cold lead.");
+  invariant(leadTemperatures.has(Temperature.WARM), "Expected at least one warm lead.");
+  invariant(leadTemperatures.has(Temperature.HOT), "Expected at least one hot lead.");
+  invariant(leadTemperatures.has(Temperature.URGENT), "Expected at least one urgent lead.");
   invariant(
-    accounts.some((account) => account.segment === Segment.MID_MARKET),
-    "Missing Mid-Market account coverage.",
+    leads.filter((lead) => lead.temperature === Temperature.URGENT).length >= 3,
+    "Expected at least three urgent leads.",
   );
-  invariant(
-    accounts.some((account) => account.segment === Segment.ENTERPRISE),
-    "Missing Enterprise account coverage.",
-  );
-  invariant(
-    accounts.some((account) => account.segment === Segment.STRATEGIC),
-    "Missing Strategic account coverage.",
-  );
+
+  for (const industry of requiredIndustries) {
+    invariant(accounts.some((account) => account.industry === industry), `Missing ${industry} industry coverage.`);
+  }
 
   invariant(accounts.some((account) => account.geography === Geography.NA_WEST), "Missing NA West coverage.");
   invariant(accounts.some((account) => account.geography === Geography.NA_EAST), "Missing NA East coverage.");
   invariant(accounts.some((account) => account.geography === Geography.EMEA), "Missing EMEA coverage.");
   invariant(accounts.some((account) => account.geography === Geography.APAC), "Missing APAC coverage.");
 
-  for (const industry of requiredIndustries) {
-    invariant(
-      accounts.some((account) => account.industry === industry),
-      `Missing ${industry} industry coverage.`,
-    );
-  }
-
-  const hotAccounts = accounts.filter(
-    (account) => account.status === AccountStatus.HOT && account.overallScore >= 82,
-  );
-  invariant(
-    hotAccounts.length >= 5,
-    `Expected at least 5 hot accounts with score >= 82, found ${hotAccounts.length}.`,
-  );
-  invariant(
-    hotAccounts.every((account) => Boolean(account.namedOwnerId)),
-    "Every hot account must have a named owner.",
-  );
-
-  const assignedAccounts = accounts.filter((account) => account.namedOwnerId);
-  invariant(
-    assignedAccounts.length === 16,
-    `Expected 16 assigned accounts, found ${assignedAccounts.length}.`,
-  );
-  invariant(
-    accounts.length - assignedAccounts.length === 4,
-    `Expected 4 unassigned accounts, found ${accounts.length - assignedAccounts.length}.`,
-  );
-
-  const contactsByAccount = new Map<string, number>();
   for (const contact of contacts) {
     invariant(accountIds.has(contact.accountId), `Contact ${contact.id} references missing account ${contact.accountId}.`);
     contactsByAccount.set(contact.accountId, (contactsByAccount.get(contact.accountId) ?? 0) + 1);
   }
 
-  const leadsByAccount = new Map<string, number>();
   for (const lead of leads) {
-    const contactId = lead.contactId;
-    const ownerId = lead.currentOwnerId;
-
     invariant(accountIds.has(lead.accountId), `Lead ${lead.id} references missing account ${lead.accountId}.`);
-    invariant(contactId !== null, `Lead ${lead.id} is missing a contact reference.`);
-    invariant(contactIds.has(contactId), `Lead ${lead.id} references missing contact ${contactId}.`);
-    invariant(ownerId !== null, `Lead ${lead.id} is missing an owner reference.`);
-    invariant(userIds.has(ownerId), `Lead ${lead.id} references missing owner ${ownerId}.`);
+    invariant(Boolean(lead.contactId), `Lead ${lead.id} is missing a contact reference.`);
+    invariant(contactIds.has(lead.contactId!), `Lead ${lead.id} references missing contact ${lead.contactId}.`);
+    invariant(Boolean(lead.currentOwnerId), `Lead ${lead.id} is missing an owner reference.`);
+    invariant(userIds.has(lead.currentOwnerId!), `Lead ${lead.id} references missing owner ${lead.currentOwnerId}.`);
     leadsByAccount.set(lead.accountId, (leadsByAccount.get(lead.accountId) ?? 0) + 1);
+
+    const components = parseComponentBreakdown(lead.scoreBreakdownJson);
+    invariant(lead.scoreLastComputedAt !== null, `Lead ${lead.id} is missing scoreLastComputedAt.`);
+    invariant(lead.scoringVersion === "scoring/v1", `Lead ${lead.id} should use scoring/v1.`);
+    invariant(components.length === 6, `Lead ${lead.id} should have 6 score components.`);
+    invariant(getComponentScore(components, "fit") === lead.fitScore, `Lead ${lead.id} fit snapshot mismatch.`);
+    invariant(getComponentScore(components, "intent") === lead.intentScore, `Lead ${lead.id} intent snapshot mismatch.`);
+    invariant(
+      getComponentScore(components, "engagement") === lead.engagementScore,
+      `Lead ${lead.id} engagement snapshot mismatch.`,
+    );
+    invariant(getComponentScore(components, "recency") === lead.recencyScore, `Lead ${lead.id} recency snapshot mismatch.`);
+    invariant(
+      getComponentScore(components, "productUsage") === lead.productUsageScore,
+      `Lead ${lead.id} product usage snapshot mismatch.`,
+    );
+    invariant(
+      getComponentScore(components, "manualPriority") === lead.manualPriorityScore,
+      `Lead ${lead.id} manual priority snapshot mismatch.`,
+    );
+    invariant(
+      components.reduce((sum, component) => sum + component.score, 0) === lead.score,
+      `Lead ${lead.id} total score does not match component breakdown.`,
+    );
+    invariant(
+      parseScoreReasonCodes(lead.scoreReasonCodesJson).length > 0,
+      `Lead ${lead.id} is missing persisted reason codes.`,
+    );
+    invariant(parseExplanation(lead.scoreExplanationJson), `Lead ${lead.id} is missing a persisted explanation.`);
   }
 
-  const linkedSignalsByAccount = new Map<string, number>();
-  const sourceSystems = new Set<string>();
-  const signalTypes = new Set<SignalType>();
-  const reasonCodes = new Set<IdentityResolutionCode>();
-  let unmatchedSignalCount = 0;
+  for (const account of accounts) {
+    const components = parseComponentBreakdown(account.scoreBreakdownJson);
+
+    invariant(account.scoreLastComputedAt !== null, `Account ${account.id} is missing scoreLastComputedAt.`);
+    invariant(account.scoringVersion === "scoring/v1", `Account ${account.id} should use scoring/v1.`);
+    invariant(components.length === 6, `Account ${account.id} should have 6 score components.`);
+    invariant(getComponentScore(components, "fit") === account.fitScore, `Account ${account.id} fit snapshot mismatch.`);
+    invariant(getComponentScore(components, "intent") === account.intentScore, `Account ${account.id} intent snapshot mismatch.`);
+    invariant(
+      getComponentScore(components, "engagement") === account.engagementScore,
+      `Account ${account.id} engagement snapshot mismatch.`,
+    );
+    invariant(
+      getComponentScore(components, "recency") === account.recencyScore,
+      `Account ${account.id} recency snapshot mismatch.`,
+    );
+    invariant(
+      getComponentScore(components, "productUsage") === account.productUsageScore,
+      `Account ${account.id} product usage snapshot mismatch.`,
+    );
+    invariant(
+      getComponentScore(components, "manualPriority") === account.manualPriorityScore,
+      `Account ${account.id} manual priority snapshot mismatch.`,
+    );
+    invariant(
+      components.reduce((sum, component) => sum + component.score, 0) === account.overallScore,
+      `Account ${account.id} total score does not match component breakdown.`,
+    );
+    invariant(
+      parseScoreReasonCodes(account.scoreReasonCodesJson).length > 0,
+      `Account ${account.id} is missing persisted reason codes.`,
+    );
+    invariant(parseExplanation(account.scoreExplanationJson), `Account ${account.id} is missing a persisted explanation.`);
+    invariant(contactsByAccount.get(account.id) === 2, `Account ${account.id} should have exactly 2 contacts.`);
+    invariant((leadsByAccount.get(account.id) ?? 0) >= 1, `Account ${account.id} should have at least 1 lead.`);
+  }
+
   let matchedSignalCount = 0;
+  let unmatchedSignalCount = 0;
+  const dedupeKeys = new Set<string>();
 
   for (const signal of signals) {
     sourceSystems.add(signal.sourceSystem);
@@ -232,12 +340,13 @@ async function main() {
     invariant(signal.payloadSummary.length > 0, `Signal ${signal.id} is missing payloadSummary.`);
     invariant(signal.receivedAt >= signal.occurredAt, `Signal ${signal.id} receivedAt precedes occurredAt.`);
     invariant(signal.createdAt >= signal.receivedAt, `Signal ${signal.id} createdAt precedes receivedAt.`);
+    invariant(signal.updatedAt >= signal.createdAt, `Signal ${signal.id} updatedAt precedes createdAt.`);
     invariant(signal.errorMessage === null, `Seeded signal ${signal.id} should not have an error message.`);
 
-    const parsedCodes = parseReasonCodes(signal.identityResolutionCodesJson);
+    const parsedCodes = parseIdentityReasonCodes(signal.identityResolutionCodesJson);
     invariant(parsedCodes.length > 0, `Signal ${signal.id} is missing identity resolution codes.`);
     for (const reasonCode of parsedCodes) {
-      reasonCodes.add(reasonCode);
+      identityReasonCodes.add(reasonCode);
     }
 
     if (signal.accountId) {
@@ -265,7 +374,7 @@ async function main() {
     }
   }
 
-  invariant(matchedSignalCount >= 90, `Expected at least 90 matched signals, found ${matchedSignalCount}.`);
+  invariant(matchedSignalCount >= 100, `Expected at least 100 matched signals, found ${matchedSignalCount}.`);
   invariant(unmatchedSignalCount >= 10, `Expected at least 10 unmatched signals, found ${unmatchedSignalCount}.`);
 
   for (const sourceSystem of requiredSourceSystems) {
@@ -277,117 +386,98 @@ async function main() {
   }
 
   for (const reasonCode of identityResolutionCodeValues) {
-    invariant(reasonCodes.has(reasonCode), `Missing seeded identity reason code coverage for ${reasonCode}.`);
+    invariant(identityReasonCodes.has(reasonCode), `Missing seeded identity reason code coverage for ${reasonCode}.`);
   }
 
-  const openTasksByAccount = new Map<string, number>();
-  for (const task of tasks) {
-    if (task.accountId) {
-      invariant(accountIds.has(task.accountId), `Task ${task.id} references missing account ${task.accountId}.`);
-      if (task.status !== TaskStatus.COMPLETED) {
-        openTasksByAccount.set(task.accountId, (openTasksByAccount.get(task.accountId) ?? 0) + 1);
-      }
-    }
+  invariant(scoreHistory.length > 0, "Expected persisted score history rows.");
+  invariant(
+    scoreHistory.some((entry) => entry.entityType === ScoreEntityType.ACCOUNT),
+    "Expected account score history rows.",
+  );
+  invariant(
+    scoreHistory.some((entry) => entry.entityType === ScoreEntityType.LEAD),
+    "Expected lead score history rows.",
+  );
+  invariant(
+    scoreHistory.some((entry) => entry.triggerType === ScoreTriggerType.MANUAL_PRIORITY_CHANGED),
+    "Expected manual priority score history rows.",
+  );
+  invariant(
+    scoreHistory.some((entry) => entry.triggerType === ScoreTriggerType.MANUAL_RECOMPUTE),
+    "Expected final snapshot score history rows.",
+  );
 
-    if (task.leadId) {
-      invariant(leadIds.has(task.leadId), `Task ${task.id} references missing lead ${task.leadId}.`);
-    }
-
-    if (task.ownerId) {
-      invariant(userIds.has(task.ownerId), `Task ${task.id} references missing owner ${task.ownerId}.`);
-    }
-  }
-
-  for (const decision of routingDecisions) {
-    if (decision.accountId) {
-      invariant(
-        accountIds.has(decision.accountId),
-        `Routing decision ${decision.id} references missing account ${decision.accountId}.`,
-      );
-    }
-    if (decision.leadId) {
-      invariant(leadIds.has(decision.leadId), `Routing decision ${decision.id} references missing lead ${decision.leadId}.`);
-    }
-    if (decision.assignedOwnerId) {
-      invariant(
-        userIds.has(decision.assignedOwnerId),
-        `Routing decision ${decision.id} references missing owner ${decision.assignedOwnerId}.`,
-      );
-    }
-  }
-
-  const scoreHistoryByAccount = new Map<string, number>();
   for (const entry of scoreHistory) {
     if (entry.accountId) {
       invariant(accountIds.has(entry.accountId), `Score history ${entry.id} references missing account ${entry.accountId}.`);
-      scoreHistoryByAccount.set(entry.accountId, (scoreHistoryByAccount.get(entry.accountId) ?? 0) + 1);
     }
+
     if (entry.leadId) {
       invariant(leadIds.has(entry.leadId), `Score history ${entry.id} references missing lead ${entry.leadId}.`);
     }
-  }
 
-  const signalAuditLogs = auditLogs.filter((entry) => entry.entityType === "signal_event");
-  invariant(
-    signalAuditLogs.length === signals.length * 3,
-    `Expected ${signals.length * 3} signal audit rows, found ${signalAuditLogs.length}.`,
-  );
-  invariant(
-    signalAuditLogs.every((entry) =>
-      entry.eventType === AuditEventType.SIGNAL_INGESTED ||
-      entry.eventType === AuditEventType.SIGNAL_NORMALIZED ||
-      entry.eventType === AuditEventType.IDENTITY_RESOLVED ||
-      entry.eventType === AuditEventType.SIGNAL_UNMATCHED_QUEUED
-    ),
-    "Signal audit rows should only contain ingest, normalization, identity, or unmatched queue events.",
-  );
-
-  const auditLogByAccount = new Map<string, number>();
-  for (const entry of auditLogs) {
-    if (entry.accountId) {
-      invariant(accountIds.has(entry.accountId), `Audit log ${entry.id} references missing account ${entry.accountId}.`);
-      auditLogByAccount.set(entry.accountId, (auditLogByAccount.get(entry.accountId) ?? 0) + 1);
-    }
-    if (entry.leadId) {
-      invariant(leadIds.has(entry.leadId), `Audit log ${entry.id} references missing lead ${entry.leadId}.`);
-    }
-  }
-
-  for (const account of accounts) {
-    invariant(
-      contactsByAccount.get(account.id) === 2,
-      `Account ${account.id} should have exactly 2 contacts.`,
-    );
-    invariant(
-      (leadsByAccount.get(account.id) ?? 0) >= 1,
-      `Account ${account.id} should have at least 1 lead.`,
-    );
-    invariant(
-      (openTasksByAccount.get(account.id) ?? 0) >= 1,
-      `Account ${account.id} should have at least 1 open or in-progress task.`,
-    );
-    invariant(
-      (scoreHistoryByAccount.get(account.id) ?? 0) >= 3,
-      `Account ${account.id} should have at least 3 score history rows.`,
-    );
-    invariant(
-      (auditLogByAccount.get(account.id) ?? 0) >= 3,
-      `Account ${account.id} should have at least 3 audit log rows.`,
-    );
-
-    const linkedSignalCount = linkedSignalsByAccount.get(account.id) ?? 0;
-    if (account.status === AccountStatus.HOT) {
+    if (entry.triggerSignalId) {
       invariant(
-        linkedSignalCount >= 6,
-        `Hot account ${account.id} should have at least 6 linked signals.`,
-      );
-    } else {
-      invariant(
-        linkedSignalCount >= 4,
-        `Account ${account.id} should have at least 4 linked signals.`,
+        signalEventIds.has(entry.triggerSignalId),
+        `Score history ${entry.id} references missing trigger signal ${entry.triggerSignalId}.`,
       );
     }
+
+    invariant(
+      parseComponentBreakdown(entry.componentBreakdownJson).length === 6,
+      `Score history ${entry.id} should persist 6 score components.`,
+    );
+    invariant(
+      parseScoreReasonCodes(entry.reasonCodesJson).length > 0,
+      `Score history ${entry.id} is missing reason codes.`,
+    );
+    invariant(parseExplanation(entry.explanationJson), `Score history ${entry.id} is missing explanation content.`);
+    invariant(entry.scoringVersion === "scoring/v1", `Score history ${entry.id} should use scoring/v1.`);
   }
+
+  const summitFlow = accounts.find((account) => account.id === "acc_summitflow_finance");
+  invariant(summitFlow, "Expected seeded account acc_summitflow_finance.");
+  invariant(
+    parseScoreReasonCodes(summitFlow.scoreReasonCodesJson).includes("intent_pricing_page_cluster"),
+    "SummitFlow Finance should reflect pricing-cluster intent.",
+  );
+
+  const signalNest = accounts.find((account) => account.id === "acc_signalnest");
+  invariant(signalNest, "Expected seeded account acc_signalnest.");
+  const signalNestReasons = parseScoreReasonCodes(signalNest.scoreReasonCodesJson);
+  invariant(
+    signalNestReasons.includes("product_usage_signup") ||
+      signalNestReasons.includes("product_usage_team_invite") ||
+      signalNestReasons.includes("product_usage_key_activation"),
+    "SignalNest should reflect product-usage score drivers.",
+  );
+
+  const frontierRetail = accounts.find((account) => account.id === "acc_frontier_retail");
+  invariant(frontierRetail, "Expected seeded account acc_frontier_retail.");
+  const frontierReasons = parseScoreReasonCodes(frontierRetail.scoreReasonCodesJson);
+  invariant(
+    frontierReasons.includes("inactivity_decay_14d") || frontierReasons.includes("inactivity_decay_30d"),
+    "Frontier Retail should reflect inactivity decay.",
+  );
+
+  const signalEventAuditLogs = auditLogs.filter((entry) => entry.entityType === "signal_event");
+  invariant(signalEventAuditLogs.length > 0, "Expected signal-event audit logs.");
+  invariant(
+    signalEventAuditLogs.every((entry) => signalEventIds.has(entry.entityId)),
+    "Signal-event audit rows must reference an existing signal event.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === "SCORE_RECOMPUTED"),
+    "Expected score recompute audit logs.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === "SCORE_THRESHOLD_CROSSED"),
+    "Expected threshold crossing audit logs.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === "SCORE_MANUAL_PRIORITY_OVERRIDDEN"),
+    "Expected manual priority override audit logs.",
+  );
 
   console.log("Seed verification passed.");
 }

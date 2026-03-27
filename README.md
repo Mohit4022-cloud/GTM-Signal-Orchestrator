@@ -25,9 +25,10 @@ This repo is designed to be useful in two ways:
 
 - deterministic seeded GTM workspace backed by Prisma and SQLite
 - typed server-side contracts for dashboard, accounts list, and account detail views
+- deterministic account and lead scoring with persisted score snapshots, score history, and reason codes
 - implemented operator views for `/dashboard`, `/accounts`, and `/accounts/[id]`
 - signal ingestion APIs at `/api/signals` and `/api/signals/upload`
-- realistic demo data for accounts, contacts, leads, routing decisions, tasks, score history, and audit logs
+- realistic demo data for accounts, contacts, leads, routing decisions, tasks, signal timelines, score history, and audit logs
 - offline-first local development with no external services required
 
 ## Core Workflows And Architecture
@@ -53,6 +54,13 @@ flowchart LR
   - `getRecentSignals()`
   - `getAccounts(filters?)`
   - `getAccountById(id)`
+- scoring-specific backend contracts:
+  - `getAccountScoreBreakdown(accountId)`
+  - `getLeadScoreBreakdown(leadId)`
+  - `getScoreHistoryForEntity(entityType, entityId, opts?)`
+  - `recomputeAccountScore(accountId, trigger?)`
+  - `recomputeLeadScore(leadId, trigger?)`
+  - `recomputeScoresForSignal(signalId, trigger?)`
 
 ### Stack
 
@@ -112,11 +120,11 @@ The seed is deterministic and currently creates:
 - 20 accounts
 - 40 contacts
 - 30 leads
-- 100 signals
+- 120+ signals
 - 40 tasks
 - 30 routing decisions
-- 60 score history events
-- 60 audit log entries
+- persisted account and lead score history with reason codes and trigger metadata
+- persisted audit logs for signal ingestion, scoring recomputes, threshold crossings, routing, and manual overrides
 
 Useful validation paths after seeding:
 
@@ -124,6 +132,13 @@ Useful validation paths after seeding:
 - `/accounts`
 - `/accounts/acc_summitflow_finance`
 - `/accounts/acc_ironpeak`
+
+Seeded scoring stories include:
+
+- pricing-cluster lift for `acc_summitflow_finance`
+- product-usage lift for `acc_signalnest`
+- inactivity decay for `acc_frontier_retail`
+- urgent lead scenarios across SummitFlow, HarborPoint, and Iron Peak
 
 ## Implemented Routes And APIs
 

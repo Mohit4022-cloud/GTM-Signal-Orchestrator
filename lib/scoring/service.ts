@@ -36,6 +36,7 @@ type ManualPriorityActor = {
   actorType: string;
   actorName: string;
   note?: string | null;
+  effectiveAtIso?: string | null;
 };
 
 function getSignalFactSelect() {
@@ -50,7 +51,10 @@ function getSignalFactSelect() {
   } as const;
 }
 
-function resolveEffectiveAt(trigger: ScoreRecomputeTriggerContract | undefined, fallback: Date) {
+function resolveEffectiveAt(
+  trigger: Pick<ScoreRecomputeTriggerContract, "effectiveAtIso"> | undefined,
+  fallback: Date,
+) {
   if (!trigger?.effectiveAtIso) {
     return fallback;
   }
@@ -64,8 +68,15 @@ function resolveTrigger(
   fallbackType: ScoreTriggerType,
   fallbackSignalId: string | null,
   fallbackEffectiveAt: Date,
-): Required<Pick<ScoreRecomputeTriggerContract, "type" | "signalId" | "effectiveAtIso">> &
-  Omit<ScoreRecomputeTriggerContract, "type" | "signalId" | "effectiveAtIso"> {
+): {
+  type: ScoreTriggerType;
+  signalId: string | null;
+  effectiveAtIso: string;
+  actorType?: string;
+  actorName?: string;
+  note?: string;
+  metadata?: Record<string, unknown> | null;
+} {
   return {
     type: trigger?.type ?? fallbackType,
     signalId: trigger?.signalId ?? fallbackSignalId,
@@ -599,12 +610,16 @@ export async function setAccountManualPriorityBoost(
     }
 
     const nextBoost = Math.max(0, Math.min(5, Math.round(boost)));
+    const effectiveAt = resolveEffectiveAt(
+      actor.effectiveAtIso ? { effectiveAtIso: actor.effectiveAtIso } : undefined,
+      new Date(),
+    );
     await tx.account.update({
       where: { id: accountId },
       data: {
         manualPriorityBoost: nextBoost,
         manualPriorityNote: actor.note ?? null,
-        manualPriorityUpdatedAt: new Date(),
+        manualPriorityUpdatedAt: effectiveAt,
       },
     });
 
@@ -623,6 +638,7 @@ export async function setAccountManualPriorityBoost(
       type: ScoreTriggerType.MANUAL_PRIORITY_CHANGED,
       actorType: actor.actorType,
       actorName: actor.actorName,
+      effectiveAtIso: effectiveAt.toISOString(),
       note: actor.note ?? undefined,
       metadata: {
         previousBoost: account.manualPriorityBoost,
@@ -652,12 +668,16 @@ export async function setLeadManualPriorityBoost(
     }
 
     const nextBoost = Math.max(0, Math.min(5, Math.round(boost)));
+    const effectiveAt = resolveEffectiveAt(
+      actor.effectiveAtIso ? { effectiveAtIso: actor.effectiveAtIso } : undefined,
+      new Date(),
+    );
     await tx.lead.update({
       where: { id: leadId },
       data: {
         manualPriorityBoost: nextBoost,
         manualPriorityNote: actor.note ?? null,
-        manualPriorityUpdatedAt: new Date(),
+        manualPriorityUpdatedAt: effectiveAt,
       },
     });
 
@@ -677,6 +697,7 @@ export async function setLeadManualPriorityBoost(
       type: ScoreTriggerType.MANUAL_PRIORITY_CHANGED,
       actorType: actor.actorType,
       actorName: actor.actorName,
+      effectiveAtIso: effectiveAt.toISOString(),
       note: actor.note ?? undefined,
       metadata: {
         previousBoost: lead.manualPriorityBoost,

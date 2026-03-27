@@ -8,8 +8,6 @@ import {
   Prisma,
   PrismaClient,
   RoutingReason,
-  ScoreComponent,
-  ScoreEntityType,
   Segment,
   SignalType,
   TaskPriority,
@@ -22,6 +20,12 @@ import type { IngestSignalInput } from "../lib/contracts/signals";
 import { ingestSignal } from "../lib/data/signals";
 import { db } from "../lib/db";
 import { sqliteAdapter } from "../lib/prisma-adapter";
+import {
+  recomputeAccountScore,
+  recomputeLeadScore,
+  setAccountManualPriorityBoost,
+  setLeadManualPriorityBoost,
+} from "../lib/scoring";
 
 const prisma = new PrismaClient({
   adapter: sqliteAdapter,
@@ -894,7 +898,12 @@ function buildMatchedSignalInputs(accounts: SeededAccount[], contacts: SeededCon
   return accounts.flatMap((account, accountIndex) => {
     const accountContacts = contacts.filter((contact) => contact.accountId === account.id);
     const signalCount = account.status === AccountStatus.HOT ? 6 : 4;
-    const dayOffsets = account.status === AccountStatus.HOT ? [12, 9, 6, 4, 2, 0] : [11, 8, 4, 1];
+    const dayOffsets =
+      account.id === "acc_frontier_retail"
+        ? [45, 39, 34, 31]
+        : account.status === AccountStatus.HOT
+          ? [12, 9, 6, 4, 2, 0]
+          : [11, 8, 4, 1];
 
     return Array.from({ length: signalCount }, (_, signalIndex) => {
       const eventType = seededSignalTypes[(accountIndex + signalIndex) % seededSignalTypes.length]!;
@@ -1029,6 +1038,309 @@ function buildUnmatchedSignalInputs(
   ];
 }
 
+function getAccountOrThrow(accounts: SeededAccount[], accountId: string) {
+  const account = accounts.find((entry) => entry.id === accountId);
+
+  if (!account) {
+    throw new Error(`Missing seeded account ${accountId}.`);
+  }
+
+  return account;
+}
+
+function getContactOrThrow(contacts: SeededContact[], contactId: string) {
+  const contact = contacts.find((entry) => entry.id === contactId);
+
+  if (!contact) {
+    throw new Error(`Missing seeded contact ${contactId}.`);
+  }
+
+  return contact;
+}
+
+function buildScoringStorySignalInputs(
+  accounts: SeededAccount[],
+  contacts: SeededContact[],
+): IngestSignalInput[] {
+  const summitFlow = getAccountOrThrow(accounts, "acc_summitflow_finance");
+  const summitFlowPrimary = getContactOrThrow(contacts, "acc_summitflow_finance_contact_01");
+
+  const harborPoint = getAccountOrThrow(accounts, "acc_harborpoint");
+  const harborPointPrimary = getContactOrThrow(contacts, "acc_harborpoint_contact_01");
+
+  const ironPeak = getAccountOrThrow(accounts, "acc_ironpeak");
+  const ironPeakPrimary = getContactOrThrow(contacts, "acc_ironpeak_contact_01");
+
+  const signalNest = getAccountOrThrow(accounts, "acc_signalnest");
+  const signalNestPrimary = getContactOrThrow(contacts, "acc_signalnest_contact_01");
+
+  return [
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subHours(baseDate, 70).toISOString(),
+      received_at: subHours(baseDate, 69).toISOString(),
+      payload: { page: "/pricing", session_id: "summitflow_pricing_story_1", visit_count: 2 },
+    },
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subHours(baseDate, 29).toISOString(),
+      received_at: subHours(baseDate, 28).toISOString(),
+      payload: { page: "/pricing", session_id: "summitflow_pricing_story_2", visit_count: 3 },
+    },
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subHours(baseDate, 5).toISOString(),
+      received_at: subHours(baseDate, 4).toISOString(),
+      payload: { page: "/pricing", session_id: "summitflow_pricing_story_3", visit_count: 4 },
+    },
+    {
+      source_system: "website",
+      event_type: "high_intent_page_cluster_visit",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subHours(baseDate, 3).toISOString(),
+      received_at: subHours(baseDate, 2).toISOString(),
+      payload: { page_cluster: "pricing,security,integrations", session_id: "summitflow_cluster_story_1" },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_booked",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subHours(baseDate, 2).toISOString(),
+      received_at: subHours(baseDate, 1).toISOString(),
+      payload: {
+        meeting_id: "summitflow_story_meeting_1",
+        calendar_event_id: "summitflow_story_calendar_1",
+        meeting_type: "exec_review",
+      },
+    },
+    {
+      source_system: "marketing_automation",
+      event_type: "form_fill",
+      account_domain: summitFlow.domain,
+      contact_email: summitFlowPrimary.email,
+      occurred_at: subMinutes(baseDate, 70).toISOString(),
+      received_at: subMinutes(baseDate, 64).toISOString(),
+      payload: {
+        form_id: "request_demo",
+        submission_id: "summitflow_story_form_1",
+        campaign: "executive_expansion",
+      },
+    },
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subHours(baseDate, 60).toISOString(),
+      received_at: subHours(baseDate, 59).toISOString(),
+      payload: { page: "/pricing", session_id: "harborpoint_pricing_story_1", visit_count: 2 },
+    },
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subHours(baseDate, 26).toISOString(),
+      received_at: subHours(baseDate, 25).toISOString(),
+      payload: { page: "/pricing", session_id: "harborpoint_pricing_story_2", visit_count: 3 },
+    },
+    {
+      source_system: "website",
+      event_type: "pricing_page_visit",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subHours(baseDate, 4).toISOString(),
+      received_at: subHours(baseDate, 3).toISOString(),
+      payload: { page: "/pricing", session_id: "harborpoint_pricing_story_3", visit_count: 4 },
+    },
+    {
+      source_system: "marketing_automation",
+      event_type: "form_fill",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subHours(baseDate, 3).toISOString(),
+      received_at: subHours(baseDate, 2).toISOString(),
+      payload: { form_id: "request_demo", submission_id: "harborpoint_story_form_1", campaign: "ops_evaluation" },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_booked",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subHours(baseDate, 2).toISOString(),
+      received_at: subHours(baseDate, 1).toISOString(),
+      payload: {
+        meeting_id: "harborpoint_story_meeting_1",
+        calendar_event_id: "harborpoint_story_calendar_1",
+        meeting_type: "discovery_call",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subMinutes(baseDate, 80).toISOString(),
+      received_at: subMinutes(baseDate, 74).toISOString(),
+      payload: {
+        workspace_id: "harborpoint_story_workspace",
+        milestone: "connected_crm",
+        user_id: "harborpoint_story_user_1",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_signup",
+      account_domain: harborPoint.domain,
+      contact_email: harborPointPrimary.email,
+      occurred_at: subMinutes(baseDate, 70).toISOString(),
+      received_at: subMinutes(baseDate, 64).toISOString(),
+      payload: {
+        workspace_id: "harborpoint_story_workspace",
+        signup_id: "harborpoint_story_signup_1",
+        plan: "pilot",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_signup",
+      account_domain: ironPeak.domain,
+      contact_email: ironPeakPrimary.email,
+      occurred_at: subHours(baseDate, 72).toISOString(),
+      received_at: subHours(baseDate, 71).toISOString(),
+      payload: { workspace_id: "ironpeak_story_workspace", signup_id: "ironpeak_story_signup_1", plan: "pilot" },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      account_domain: ironPeak.domain,
+      contact_email: ironPeakPrimary.email,
+      occurred_at: subHours(baseDate, 8).toISOString(),
+      received_at: subHours(baseDate, 7).toISOString(),
+      payload: {
+        workspace_id: "ironpeak_story_workspace",
+        milestone: "invited_teammates",
+        user_id: "ironpeak_story_user_2",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      account_domain: ironPeak.domain,
+      contact_email: ironPeakPrimary.email,
+      occurred_at: subHours(baseDate, 6).toISOString(),
+      received_at: subHours(baseDate, 5).toISOString(),
+      payload: {
+        workspace_id: "ironpeak_story_workspace",
+        milestone: "connected_crm",
+        user_id: "ironpeak_story_user_3",
+      },
+    },
+    {
+      source_system: "sales_engagement",
+      event_type: "email_reply",
+      account_domain: ironPeak.domain,
+      contact_email: ironPeakPrimary.email,
+      occurred_at: subHours(baseDate, 4).toISOString(),
+      received_at: subHours(baseDate, 3).toISOString(),
+      payload: {
+        thread_id: "ironpeak_story_thread_1",
+        message_id: "ironpeak_story_message_1",
+        subject: "Expansion readiness follow-up",
+      },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_booked",
+      account_domain: ironPeak.domain,
+      contact_email: ironPeakPrimary.email,
+      occurred_at: subHours(baseDate, 2).toISOString(),
+      received_at: subHours(baseDate, 1).toISOString(),
+      payload: {
+        meeting_id: "ironpeak_story_meeting_1",
+        calendar_event_id: "ironpeak_story_calendar_1",
+        meeting_type: "exec_review",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_signup",
+      account_domain: signalNest.domain,
+      contact_email: signalNestPrimary.email,
+      occurred_at: subHours(baseDate, 48).toISOString(),
+      received_at: subHours(baseDate, 47).toISOString(),
+      payload: {
+        workspace_id: "signalnest_story_workspace",
+        signup_id: "signalnest_story_signup_1",
+        plan: "trial",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      account_domain: signalNest.domain,
+      contact_email: signalNestPrimary.email,
+      occurred_at: subHours(baseDate, 20).toISOString(),
+      received_at: subHours(baseDate, 19).toISOString(),
+      payload: {
+        workspace_id: "signalnest_story_workspace",
+        milestone: "invited_teammates",
+        user_id: "signalnest_story_user_1",
+      },
+    },
+    {
+      source_system: "product",
+      event_type: "product_usage_milestone",
+      account_domain: signalNest.domain,
+      contact_email: signalNestPrimary.email,
+      occurred_at: subHours(baseDate, 6).toISOString(),
+      received_at: subHours(baseDate, 5).toISOString(),
+      payload: {
+        workspace_id: "signalnest_story_workspace",
+        milestone: "connected_crm",
+        user_id: "signalnest_story_user_2",
+      },
+    },
+    {
+      source_system: "sales_engagement",
+      event_type: "email_reply",
+      account_domain: signalNest.domain,
+      contact_email: signalNestPrimary.email,
+      occurred_at: subHours(baseDate, 5).toISOString(),
+      received_at: subHours(baseDate, 4).toISOString(),
+      payload: {
+        thread_id: "signalnest_story_thread_1",
+        message_id: "signalnest_story_message_1",
+        subject: "Activation follow-up",
+      },
+    },
+    {
+      source_system: "calendar",
+      event_type: "meeting_booked",
+      account_domain: signalNest.domain,
+      contact_email: signalNestPrimary.email,
+      occurred_at: subHours(baseDate, 4).toISOString(),
+      received_at: subHours(baseDate, 3).toISOString(),
+      payload: {
+        meeting_id: "signalnest_story_meeting_1",
+        calendar_event_id: "signalnest_story_calendar_1",
+        meeting_type: "activation_workshop",
+      },
+    },
+  ];
+}
+
 function getLeadInboundType(source: string) {
   if (source.includes("Product")) return "Product-led";
   if (source.includes("Webinar") || source.includes("Pricing")) return "Inbound";
@@ -1072,7 +1384,7 @@ function getLeadTaskPriority(temperature: Temperature) {
   return TaskPriority.MEDIUM;
 }
 
-function getLeadTaskDueAt(lead: SeededLead, sequenceIndex: number) {
+function getLeadTaskDueAt(lead: { temperature: Temperature }, sequenceIndex: number) {
   if (lead.temperature === Temperature.URGENT) {
     return addHours(baseDate, 2 + (sequenceIndex % 3));
   }
@@ -1151,6 +1463,54 @@ async function main() {
 
   await prisma.contact.createMany({ data: contacts });
 
+  await prisma.ruleConfig.createMany({
+    data: [
+      {
+        id: "rule_scoring_v1",
+        ruleType: "scoring",
+        version: "scoring/v1",
+        isActive: true,
+        configJson: {
+          version: "scoring/v1",
+          componentCaps: {
+            fit: 25,
+            intent: 20,
+            engagement: 25,
+            recency: 10,
+            productUsage: 15,
+            manualPriority: 5,
+          },
+          thresholds: {
+            coldMax: 24,
+            warmMax: 49,
+            hotMax: 74,
+            urgentMin: 75,
+          },
+        },
+      },
+      {
+        id: "rule_routing_2026_03",
+        ruleType: "routing",
+        version: "2026.03",
+        isActive: true,
+        configJson: {
+          precedence: [
+            "named-account",
+            "territory-segment",
+            "round-robin",
+            "strategic-escalation",
+            "ops-review",
+          ],
+          queues: {
+            urgent: "exec-priority",
+            high: "hot-inbound",
+            default: "signal-followup",
+          },
+        },
+      },
+    ],
+  });
+
   const leads: SeededLead[] = accounts.flatMap((account, index) => {
     const primaryScore = clampScore(
       account.overallScore + (account.status === AccountStatus.HOT ? 2 : -4 + (index % 6)),
@@ -1228,19 +1588,99 @@ async function main() {
   await prisma.lead.createMany({ data: leads });
 
   const matchedSignalInputs = buildMatchedSignalInputs(accounts, contacts);
+  const scoringStorySignalInputs = buildScoringStorySignalInputs(accounts, contacts);
   const unmatchedSignalInputs = buildUnmatchedSignalInputs(accounts, contacts);
-  const seededSignalInputs = [...matchedSignalInputs, ...unmatchedSignalInputs];
+  const seededSignalInputs = [...matchedSignalInputs, ...scoringStorySignalInputs, ...unmatchedSignalInputs];
+  const ingestedSignals: Array<{
+    signalId: string;
+    occurredAt: Date;
+    receivedAt: Date;
+  }> = [];
 
   for (const signalInput of seededSignalInputs) {
     const result = await ingestSignal(signalInput);
     if (!result.created) {
       throw new Error(`Seed signal dedupe collision detected for ${signalInput.event_type}.`);
     }
+
+    ingestedSignals.push({
+      signalId: result.signalId,
+      occurredAt: new Date(signalInput.occurred_at),
+      receivedAt: new Date(signalInput.received_at ?? signalInput.occurred_at),
+    });
   }
 
-  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  await prisma.$transaction(
+    ingestedSignals.map((signal, index) =>
+      prisma.signalEvent.update({
+        where: { id: signal.signalId },
+        data: {
+          createdAt: addMinutes(signal.receivedAt, 1 + (index % 3)),
+          updatedAt: addMinutes(signal.receivedAt, 3 + (index % 3)),
+        },
+      }),
+    ),
+  );
 
-  const routingDecisions = leads.map((lead) => {
+  await setAccountManualPriorityBoost("acc_signalnest", 3, {
+    actorType: "ops_user",
+    actorName: "Priya Singh",
+    note: "Prioritized after product-qualified expansion interest.",
+    effectiveAtIso: addMinutes(baseDate, 20).toISOString(),
+  });
+  await setLeadManualPriorityBoost("acc_summitflow_finance_lead_01", 5, {
+    actorType: "ops_user",
+    actorName: "Amelia Ross",
+    note: "Escalated because pricing activity and live meeting intent converged.",
+    effectiveAtIso: addMinutes(baseDate, 21).toISOString(),
+  });
+  await setLeadManualPriorityBoost("acc_harborpoint_lead_01", 5, {
+    actorType: "ops_user",
+    actorName: "Elena Morales",
+    note: "Moved into the executive queue after the direct meeting request.",
+    effectiveAtIso: addMinutes(baseDate, 22).toISOString(),
+  });
+  await setLeadManualPriorityBoost("acc_ironpeak_lead_01", 5, {
+    actorType: "ops_user",
+    actorName: "Elena Morales",
+    note: "Boosted after product activation and stakeholder follow-up aligned.",
+    effectiveAtIso: addMinutes(baseDate, 23).toISOString(),
+  });
+
+  const scoreAsOf = addMinutes(baseDate, 45);
+  for (const account of accounts) {
+    await recomputeAccountScore(account.id, {
+      type: "MANUAL_RECOMPUTE",
+      actorType: "system",
+      actorName: "Seed Snapshot",
+      note: "Finalize deterministic end-of-day account scoring snapshots.",
+      effectiveAtIso: scoreAsOf.toISOString(),
+    });
+  }
+
+  for (const lead of leads) {
+    await recomputeLeadScore(lead.id, {
+      type: "MANUAL_RECOMPUTE",
+      actorType: "system",
+      actorName: "Seed Snapshot",
+      note: "Finalize deterministic end-of-day lead scoring snapshots.",
+      effectiveAtIso: scoreAsOf.toISOString(),
+    });
+  }
+
+  const refreshedAccounts = await prisma.account.findMany({
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+  const refreshedLeads = await prisma.lead.findMany({
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+  const accountById = new Map(refreshedAccounts.map((account) => [account.id, account]));
+
+  const routingDecisions = refreshedLeads.map((lead) => {
     const account = accountById.get(lead.accountId)!;
     const decisionType =
       account.segment === Segment.STRATEGIC
@@ -1251,10 +1691,10 @@ async function main() {
             ? RoutingReason.ROUND_ROBIN
             : RoutingReason.TERRITORY_SEGMENT;
 
-    return {
-      id: `${lead.id}_route`,
-      leadId: lead.id,
-      accountId: lead.accountId,
+      return {
+        id: `${lead.id}_route`,
+        leadId: lead.id,
+        accountId: lead.accountId,
       policyVersion: "routing-2026.03",
       decisionType,
       assignedOwnerId: lead.currentOwnerId,
@@ -1274,22 +1714,22 @@ async function main() {
             : lead.temperature === Temperature.WARM
               ? "signal-followup"
               : "nurture-review",
-      explanation:
-        decisionType === RoutingReason.STRATEGIC_ESCALATION
-          ? "Strategic account routed to paired executive coverage after strong buying signals."
-          : decisionType === RoutingReason.NAMED_ACCOUNT
-            ? "Existing named owner retained to keep account context and multithread continuity."
-            : decisionType === RoutingReason.TERRITORY_SEGMENT
-              ? "Lead assigned by geography and segment coverage policy."
-              : "Lead distributed through the fallback rotation because the account has no named owner.",
-      createdAt: lead.routedAt,
+        explanation:
+          decisionType === RoutingReason.STRATEGIC_ESCALATION
+            ? "Strategic account routed to paired executive coverage after strong buying signals."
+            : decisionType === RoutingReason.NAMED_ACCOUNT
+              ? "Existing named owner retained to keep account context and multithread continuity."
+              : decisionType === RoutingReason.TERRITORY_SEGMENT
+                ? "Lead assigned by geography and segment coverage policy."
+                : "Lead distributed through the fallback rotation because the account has no named owner.",
+      createdAt: lead.routedAt ?? lead.createdAt,
     };
   });
 
   await prisma.routingDecision.createMany({ data: routingDecisions });
 
   const tasks = [
-    ...leads.map((lead, index) => {
+    ...refreshedLeads.map((lead, index) => {
       const account = accountById.get(lead.accountId)!;
       const isSecondaryLead = lead.id.endsWith("_lead_02");
       const primaryTaskStatus = index % 4 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN;
@@ -1357,166 +1797,43 @@ async function main() {
   ];
 
   await prisma.task.createMany({ data: tasks });
+  const routeAuditLogs = refreshedAccounts.map((account, index) => {
+    const primaryLead = refreshedLeads.find(
+      (lead) => lead.accountId === account.id && lead.id.endsWith("_lead_01"),
+    )!;
 
-  const scoreHistory = accounts.flatMap((account, index) => {
-    const intentDelta =
-      account.status === AccountStatus.HOT
-        ? 31 + (index % 2)
-        : account.segment === Segment.STRATEGIC
-          ? 24
-          : 18 + (index % 4);
-    const engagementDelta = account.overallScore - account.fitScore - intentDelta;
-
-    return [
-      {
-        id: `${account.id}_score_fit`,
-        entityType: ScoreEntityType.ACCOUNT,
-        entityId: account.id,
-        accountId: account.id,
-        leadId: null,
-        previousScore: 0,
-        newScore: account.fitScore,
-        delta: account.fitScore,
-        scoreComponent: ScoreComponent.FIT,
-        reasonCode: "ICP fit, segment weighting, and account tier calibration.",
-        createdAt: subDays(baseDate, 18),
+    return {
+      id: `${account.id}_audit_route`,
+      eventType: AuditEventType.ROUTE_ASSIGNED,
+      actorType: "system",
+      actorName: "Routing Engine",
+      entityType: "lead",
+      entityId: primaryLead.id,
+      accountId: account.id,
+      leadId: primaryLead.id,
+      beforeState: { queue: "pending" },
+      afterState: {
+        queue:
+          primaryLead.temperature === Temperature.URGENT
+            ? "exec-priority"
+            : primaryLead.temperature === Temperature.HOT
+              ? "hot-inbound"
+              : primaryLead.temperature === Temperature.WARM
+                ? "signal-followup"
+                : "nurture-review",
       },
-      {
-        id: `${account.id}_score_intent`,
-        entityType: ScoreEntityType.ACCOUNT,
-        entityId: account.id,
-        accountId: account.id,
-        leadId: null,
-        previousScore: account.fitScore,
-        newScore: account.fitScore + intentDelta,
-        delta: intentDelta,
-        scoreComponent: ScoreComponent.INTENT,
-        reasonCode: "Pricing visits, form conversion, and intent spikes increased buying confidence.",
-        createdAt: subDays(baseDate, 8),
-      },
-      {
-        id: `${account.id}_score_engagement`,
-        entityType: ScoreEntityType.ACCOUNT,
-        entityId: account.id,
-        accountId: account.id,
-        leadId: null,
-        previousScore: account.fitScore + intentDelta,
-        newScore: account.overallScore,
-        delta: engagementDelta,
-        scoreComponent: ScoreComponent.ENGAGEMENT,
-        reasonCode: "Follow-up activity, stakeholder replies, and meeting activity lifted engagement confidence.",
-        createdAt: subDays(baseDate, 2),
-      },
-    ];
+      explanation:
+        index % 2 === 0
+          ? "Lead moved into the active follow-up queue based on owner coverage and current urgency."
+          : "Routing policy preserved account context and assigned the working owner without manual intervention.",
+      createdAt: addMinutes(scoreAsOf, 10 + index),
+    };
   });
 
-  await prisma.scoreHistory.createMany({ data: scoreHistory });
-
-  const auditLogs = accounts.flatMap((account, index) => {
-    const primaryLead = leads.find((lead) => lead.accountId === account.id && lead.id.endsWith("_lead_01"))!;
-    const signalCount = account.status === AccountStatus.HOT ? 6 : 4;
-
-    return [
-      {
-        id: `${account.id}_audit_signal`,
-        eventType: AuditEventType.SIGNAL_INGESTED,
-        actorType: "system",
-        actorName: "Signal Ingestion",
-        entityType: "Account",
-        entityId: account.id,
-        accountId: account.id,
-        leadId: primaryLead.id,
-        beforeState: Prisma.JsonNull,
-        afterState: { signalCount, mostRecentSource: signalCount === 6 ? "Calendar" : "Website" },
-        explanation: "Recent account activity was normalized and attached to the unified account timeline.",
-        createdAt: subDays(baseDate, 3),
-      },
-      {
-        id: `${account.id}_audit_score`,
-        eventType: AuditEventType.SCORE_UPDATED,
-        actorType: "system",
-        actorName: "Scoring Engine",
-        entityType: "Account",
-        entityId: account.id,
-        accountId: account.id,
-        leadId: primaryLead.id,
-        beforeState: { score: Math.max(0, account.overallScore - 11) },
-        afterState: { score: account.overallScore },
-        explanation: "Fit, intent, and engagement components were recalculated after the latest signal cluster.",
-        createdAt: subDays(baseDate, 2),
-      },
-      {
-        id: `${account.id}_audit_route`,
-        eventType: AuditEventType.ROUTE_ASSIGNED,
-        actorType: "system",
-        actorName: "Routing Engine",
-        entityType: "Lead",
-        entityId: primaryLead.id,
-        accountId: account.id,
-        leadId: primaryLead.id,
-        beforeState: { queue: "pending" },
-        afterState: {
-          queue:
-            primaryLead.temperature === Temperature.URGENT
-              ? "exec-priority"
-              : primaryLead.temperature === Temperature.HOT
-                ? "hot-inbound"
-                : "signal-followup",
-        },
-        explanation:
-          index % 2 === 0
-            ? "Lead moved into the active follow-up queue based on owner coverage and current urgency."
-            : "Routing policy preserved account context and assigned the working owner without manual intervention.",
-        createdAt: subDays(baseDate, 1),
-      },
-    ];
-  });
-
-  await prisma.auditLog.createMany({ data: auditLogs });
-
-  await prisma.ruleConfig.createMany({
-    data: [
-      {
-        id: "rule_scoring_2026_03",
-        ruleType: "scoring",
-        version: "2026.03",
-        isActive: true,
-        configJson: {
-          weights: {
-            fit: 0.25,
-            intent: 0.2,
-            engagement: 0.25,
-            recency: 0.1,
-            productUsage: 0.15,
-            manualPriority: 0.05,
-          },
-        },
-      },
-      {
-        id: "rule_routing_2026_03",
-        ruleType: "routing",
-        version: "2026.03",
-        isActive: true,
-        configJson: {
-          precedence: [
-            "named-account",
-            "territory-segment",
-            "round-robin",
-            "strategic-escalation",
-            "ops-review",
-          ],
-          queues: {
-            urgent: "exec-priority",
-            high: "hot-inbound",
-            default: "signal-followup",
-          },
-        },
-      },
-    ],
-  });
+  await prisma.auditLog.createMany({ data: routeAuditLogs });
 
   console.log(
-    `Seeded GTM Signal Orchestrator demo data: 8 users, 20 accounts, 40 contacts, 30 leads, ${seededSignalInputs.length} signal events, and 40 tasks.`,
+    `Seeded GTM Signal Orchestrator demo data: ${userSeed.length} users, ${accounts.length} accounts, ${contacts.length} contacts, ${refreshedLeads.length} leads, ${seededSignalInputs.length} signal events, and ${tasks.length} tasks.`,
   );
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { before, test } from "node:test";
+import { after, before, test } from "node:test";
 import { readFile } from "node:fs/promises";
 
 import { SignalStatus } from "@prisma/client";
@@ -19,6 +19,10 @@ import { parseSignalInput } from "@/lib/validation/signals";
 import { resetDatabase } from "./helpers/db";
 
 before(() => {
+  resetDatabase();
+});
+
+after(() => {
   resetDatabase();
 });
 

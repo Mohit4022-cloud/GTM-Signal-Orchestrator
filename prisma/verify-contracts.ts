@@ -1,4 +1,4 @@
-import { Segment, SignalStatus } from "@prisma/client";
+import { ScoreEntityType, Segment, SignalStatus, Temperature } from "@prisma/client";
 
 import { getAccountById, getAccounts } from "../lib/queries/accounts";
 import {
@@ -12,6 +12,11 @@ import {
   getSignalById,
   getUnmatchedSignals,
 } from "../lib/data/signals";
+import {
+  getAccountScoreBreakdown,
+  getLeadScoreBreakdown,
+  getScoreHistoryForEntity,
+} from "../lib/scoring";
 
 const DASHBOARD_KPI_KEYS = [
   "signalsReceivedToday",
@@ -39,6 +44,7 @@ async function main() {
     strategicAccounts,
     ownerAccounts,
     hotBucketAccounts,
+    urgentBucketAccounts,
   ] = await Promise.all([
     getDashboardSummary(),
     getHotAccounts(),
@@ -49,6 +55,7 @@ async function main() {
     getAccounts({ segment: Segment.STRATEGIC }),
     getAccounts({ owner: "usr_elena_morales" }),
     getAccounts({ scoreBucket: "hot" }),
+    getAccounts({ scoreBucket: "urgent" }),
   ]);
 
   invariant(
@@ -73,6 +80,16 @@ async function main() {
   invariant(
     hotAccounts.every((account) => Boolean(account.segmentLabel) && Boolean(account.statusLabel)),
     "Hot accounts must include both raw enums and display labels.",
+  );
+  invariant(
+    hotAccounts.every(
+      (account) =>
+        (account.temperature === Temperature.HOT || account.temperature === Temperature.URGENT) &&
+        Boolean(account.temperatureLabel) &&
+        Boolean(account.scoringVersion) &&
+        account.scoreLastComputedAtIso !== undefined,
+    ),
+    "Hot accounts must expose temperature and scoring snapshot metadata.",
   );
   invariant(
     hotAccounts.every((account, index, accounts) => {
@@ -131,8 +148,8 @@ async function main() {
 
   invariant(allAccounts.rows.length === 20, `Expected 20 accounts, found ${allAccounts.rows.length}.`);
   invariant(
-    allAccounts.options.scoreBuckets.length === 3,
-    `Expected 3 score bucket options, found ${allAccounts.options.scoreBuckets.length}.`,
+    allAccounts.options.scoreBuckets.length === 4,
+    `Expected 4 score bucket options, found ${allAccounts.options.scoreBuckets.length}.`,
   );
   invariant(
     strategicAccounts.rows.every((account) => account.segment === Segment.STRATEGIC),
@@ -143,8 +160,12 @@ async function main() {
     "Owner filters should return only the requested owner.",
   );
   invariant(
-    hotBucketAccounts.rows.every((account) => account.score >= 80),
-    "Hot score bucket filters should only return scores >= 80.",
+    hotBucketAccounts.rows.every((account) => account.temperature === Temperature.HOT),
+    "Hot score bucket filters should only return hot accounts.",
+  );
+  invariant(
+    urgentBucketAccounts.rows.every((account) => account.temperature === Temperature.URGENT),
+    "Urgent score bucket filters should only return urgent accounts.",
   );
 
   const accountDetail = await getAccountById("acc_summitflow_finance");
@@ -156,7 +177,51 @@ async function main() {
   invariant(accountDetail.recentSignals.length > 0, "Expected account detail recent signals.");
   invariant(accountDetail.openTasks.length > 0, "Expected account detail open tasks.");
   invariant(accountDetail.scoreBreakdown.length > 0, "Expected account detail score breakdown.");
+  invariant(accountDetail.score.componentBreakdown.length > 0, "Expected account detail score contract.");
+  invariant(accountDetail.scoreHistory.length > 0, "Expected account detail score history.");
+  invariant(Boolean(accountDetail.metadata.temperatureLabel), "Expected account temperature label.");
+  invariant(Boolean(accountDetail.metadata.scoringVersion), "Expected account scoring version.");
+  invariant(
+    accountDetail.relatedLeads.every(
+      (lead) => typeof lead.fitScore === "number" && Boolean(lead.scoringVersion) && lead.scoreLastComputedAtIso !== undefined,
+    ),
+    "Related leads must expose fit scores and scoring snapshot metadata.",
+  );
   invariant(accountDetail.auditLog.length > 0, "Expected account detail audit log.");
+
+  const [accountScore, leadScore, accountHistory] = await Promise.all([
+    getAccountScoreBreakdown("acc_summitflow_finance"),
+    getLeadScoreBreakdown("acc_summitflow_finance_lead_01"),
+    getScoreHistoryForEntity(ScoreEntityType.ACCOUNT, "acc_summitflow_finance", { limit: 5 }),
+  ]);
+
+  invariant(accountScore !== null, "Expected account score breakdown.");
+  invariant(accountScore.componentBreakdown.length === 6, "Account score breakdown should include 6 components.");
+  invariant(accountScore.topReasonCodes.length > 0, "Account score breakdown should include reason codes.");
+  invariant(Boolean(accountScore.explanation.summary), "Account score breakdown should include an explanation.");
+  invariant(Boolean(accountScore.scoringVersion), "Account score breakdown should include a version.");
+
+  invariant(leadScore !== null, "Expected lead score breakdown.");
+  invariant(leadScore.componentBreakdown.length === 6, "Lead score breakdown should include 6 components.");
+  invariant(leadScore.topReasonCodes.length > 0, "Lead score breakdown should include reason codes.");
+  invariant(Boolean(leadScore.explanation.summary), "Lead score breakdown should include an explanation.");
+  invariant(Boolean(leadScore.scoringVersion), "Lead score breakdown should include a version.");
+
+  invariant(accountHistory.rows.length > 0, "Expected account score history rows.");
+  invariant(
+    accountHistory.rows.every(
+      (row) =>
+        row.reasonCodes.length > 0 &&
+        row.componentBreakdown.length === 6 &&
+        Boolean(row.explanation.summary) &&
+        Boolean(row.scoringVersion),
+    ),
+    "Account score history rows must expose stable score contracts.",
+  );
+  invariant(
+    accountHistory.rows.some((row) => row.trigger.signalSummary !== null || row.trigger.signalId === null),
+    "Score history rows must expose trigger summaries when a signal is present.",
+  );
 
   const accountTimeline = await getAccountTimeline("acc_summitflow_finance", { limit: 8 });
   invariant(accountTimeline.length > 0, "Expected account timeline rows.");

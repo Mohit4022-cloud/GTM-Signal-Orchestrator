@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { before, test } from "node:test";
+import { after, before, test } from "node:test";
 import { readFile } from "node:fs/promises";
 
 import { POST as ingestPost } from "@/app/api/signals/route";
@@ -8,6 +8,10 @@ import { POST as uploadPost } from "@/app/api/signals/upload/route";
 import { resetDatabase } from "./helpers/db";
 
 before(() => {
+  resetDatabase();
+});
+
+after(() => {
   resetDatabase();
 });
 

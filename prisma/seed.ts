@@ -33,6 +33,71 @@ const addMinutes = (date: Date, minutes: number) =>
   new Date(date.getTime() + minutes * 60 * 1000);
 const subDays = (date: Date, days: number) =>
   new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
+const subHours = (date: Date, hours: number) =>
+  new Date(date.getTime() - hours * 60 * 60 * 1000);
+const subMinutes = (date: Date, minutes: number) =>
+  new Date(date.getTime() - minutes * 60 * 1000);
+
+type AccountBlueprint = {
+  id: string;
+  name: string;
+  domain: string;
+  segment: Segment;
+  industry: string;
+  geography: Geography;
+  employeeCount: number;
+  annualRevenueBand: string;
+  namedOwnerId: string | null;
+  lifecycleStage: LifecycleStage;
+  fitScore: number;
+  overallScore: number;
+  status: AccountStatus;
+};
+
+type PersonaProfile = {
+  title: string;
+  department: string;
+  seniority: string;
+  personaType: string;
+};
+
+type SeededAccount = AccountBlueprint & {
+  accountTier: AccountTier;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SeededContact = {
+  id: string;
+  accountId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  title: string;
+  department: string;
+  seniority: string;
+  phone: string;
+  personaType: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SeededLead = {
+  id: string;
+  accountId: string;
+  contactId: string;
+  source: string;
+  inboundType: string;
+  currentOwnerId: string;
+  status: LeadStatus;
+  score: number;
+  temperature: Temperature;
+  slaDeadlineAt: Date;
+  firstResponseAt: Date | null;
+  routedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 const userSeed = [
   {
@@ -106,16 +171,6 @@ const userSeed = [
     avatarColor: "#059669",
   },
   {
-    id: "usr_owen_brooks",
-    name: "Owen Brooks",
-    email: "owen.brooks@gtmso.local",
-    role: "Sales Ops Analyst",
-    team: "Revenue Operations",
-    geography: Geography.NA_EAST,
-    title: "Sales Operations Analyst",
-    avatarColor: "#475569",
-  },
-  {
     id: "usr_hana_cho",
     name: "Hana Cho",
     email: "hana.cho@gtmso.local",
@@ -125,253 +180,345 @@ const userSeed = [
     title: "Enterprise Account Executive",
     avatarColor: "#c2410c",
   },
+] as const;
+
+const accountBlueprints: readonly AccountBlueprint[] = [
   {
-    id: "usr_leo_grant",
-    name: "Leo Grant",
-    email: "leo.grant@gtmso.local",
-    role: "RevOps Analyst",
-    team: "Revenue Operations",
+    id: "acc_northstar_analytics",
+    name: "Northstar Analytics",
+    domain: "northstaranalytics.com",
+    segment: Segment.MID_MARKET,
+    industry: "SaaS",
     geography: Geography.NA_WEST,
-    title: "RevOps Analyst",
-    avatarColor: "#334155",
-  },
-];
-
-const ownerPool = [
-  "usr_dante_kim",
-  "usr_miles_turner",
-  "usr_noor_haddad",
-  "usr_elena_morales",
-  "usr_hana_cho",
-  "usr_amelia_ross",
-] as const;
-
-const accountBlueprints = [
-  ["acc_aperture_robotics", "Aperture Robotics", "aperturerobotics.com", "Manufacturing"],
-  ["acc_cedarbridge_health", "CedarBridge Health", "cedarbridgehealth.com", "Healthcare"],
-  ["acc_northstar_analytics", "Northstar Analytics", "northstaranalytics.com", "SaaS"],
-  ["acc_meridian_freight", "Meridian Freight Cloud", "meridianfreightcloud.com", "Logistics"],
-  ["acc_forgeworks_industrial", "Forgeworks Industrial", "forgeworksindustrial.com", "Manufacturing"],
-  ["acc_brightharbor_retail", "BrightHarbor Retail", "brightharborretail.com", "Retail"],
-  ["acc_atlas_grid", "Atlas Grid Systems", "atlasgridsystems.com", "Energy"],
-  ["acc_summitflow_finance", "SummitFlow Finance", "summitflowfinance.com", "Fintech"],
-  ["acc_latticebio", "LatticeBio Labs", "latticebio.com", "Healthcare"],
-  ["acc_signalnest", "SignalNest Software", "signalnestsoftware.com", "SaaS"],
-  ["acc_paragon_freight", "Paragon Freight", "paragonfreight.io", "Logistics"],
-  ["acc_rivetstack", "RivetStack Automation", "rivetstackautomation.com", "Manufacturing"],
-  ["acc_harborpoint", "HarborPoint SaaS", "harborpointsaas.com", "SaaS"],
-  ["acc_beaconops", "BeaconOps Partners", "beaconopspartners.com", "Professional Services"],
-  ["acc_novachannel", "NovaChannel Commerce", "novachannelcommerce.com", "Retail"],
-  ["acc_pinecrest", "Pinecrest Labs", "pinecrestlabs.com", "Healthcare"],
-  ["acc_alloyworks", "AlloyWorks Cloud", "alloyworkscloud.com", "Manufacturing"],
-  ["acc_bluemesa", "BlueMesa Tech", "bluemesatech.com", "SaaS"],
-  ["acc_frontier_retail", "Frontier Retail Systems", "frontierretailsystems.com", "Retail"],
-  ["acc_cedar_loop", "Cedar Loop Finance", "cedarloopfinance.com", "Fintech"],
-  ["acc_orbitiq", "OrbitIQ Security", "orbitiqsecurity.com", "Cybersecurity"],
-  ["acc_ironpeak", "Iron Peak Manufacturing", "ironpeakmfg.com", "Manufacturing"],
-  ["acc_driftline", "Driftline Energy", "driftlineenergy.com", "Energy"],
-  ["acc_veritypulse", "VerityPulse Health", "veritypulsehealth.com", "Healthcare"],
-] as const;
-
-const segments = [
-  Segment.SMB,
-  Segment.SMB,
-  Segment.MID_MARKET,
-  Segment.MID_MARKET,
-  Segment.ENTERPRISE,
-  Segment.ENTERPRISE,
-  Segment.SMB,
-  Segment.STRATEGIC,
-  Segment.MID_MARKET,
-  Segment.MID_MARKET,
-  Segment.ENTERPRISE,
-  Segment.ENTERPRISE,
-  Segment.MID_MARKET,
-  Segment.SMB,
-  Segment.SMB,
-  Segment.MID_MARKET,
-  Segment.ENTERPRISE,
-  Segment.ENTERPRISE,
-  Segment.SMB,
-  Segment.MID_MARKET,
-  Segment.STRATEGIC,
-  Segment.STRATEGIC,
-  Segment.ENTERPRISE,
-  Segment.STRATEGIC,
-] as const;
-
-const geographies = [
-  Geography.NA_EAST,
-  Geography.NA_EAST,
-  Geography.NA_WEST,
-  Geography.NA_EAST,
-  Geography.EMEA,
-  Geography.NA_WEST,
-  Geography.NA_WEST,
-  Geography.NA_EAST,
-  Geography.EMEA,
-  Geography.NA_WEST,
-  Geography.EMEA,
-  Geography.APAC,
-  Geography.NA_WEST,
-  Geography.NA_EAST,
-  Geography.NA_WEST,
-  Geography.APAC,
-  Geography.EMEA,
-  Geography.NA_WEST,
-  Geography.NA_EAST,
-  Geography.NA_EAST,
-  Geography.EMEA,
-  Geography.APAC,
-  Geography.APAC,
-  Geography.NA_EAST,
-] as const;
-
-const lifecycleStages = [
-  LifecycleStage.PROSPECT,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.PROSPECT,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.NURTURE,
-  LifecycleStage.PROSPECT,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.CUSTOMER,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.ENGAGED,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.SALES_READY,
-  LifecycleStage.CUSTOMER,
-  LifecycleStage.SALES_READY,
-] as const;
-
-const accountStatuses = [
-  AccountStatus.WATCH,
-  AccountStatus.HEALTHY,
-  AccountStatus.HOT,
-  AccountStatus.WATCH,
-  AccountStatus.HOT,
-  AccountStatus.HEALTHY,
-  AccountStatus.WATCH,
-  AccountStatus.HOT,
-  AccountStatus.HEALTHY,
-  AccountStatus.WATCH,
-  AccountStatus.HOT,
-  AccountStatus.WATCH,
-  AccountStatus.HOT,
-  AccountStatus.AT_RISK,
-  AccountStatus.WATCH,
-  AccountStatus.HEALTHY,
-  AccountStatus.HOT,
-  AccountStatus.HEALTHY,
-  AccountStatus.WATCH,
-  AccountStatus.WATCH,
-  AccountStatus.HOT,
-  AccountStatus.HOT,
-  AccountStatus.HEALTHY,
-  AccountStatus.HOT,
-] as const;
-
-const overallScores = [
-  63, 58, 88, 67, 86, 55, 61, 92, 64, 69, 84, 73, 89, 44, 57, 62, 85, 78, 60,
-  66, 90, 94, 74, 87,
-] as const;
-
-const fitScores = [
-  22, 20, 27, 23, 29, 18, 22, 28, 21, 24, 26, 25, 28, 15, 19, 20, 27, 25, 21,
-  24, 28, 30, 24, 29,
-] as const;
-
-const employeeCounts = [
-  180, 230, 420, 360, 1600, 900, 210, 4200, 580, 410, 1400, 1120, 510, 140,
-  190, 700, 1500, 980, 260, 340, 3200, 5100, 2200, 2800,
-] as const;
-
-const revenueBands = [
-  "$20M-$50M",
-  "$20M-$50M",
-  "$50M-$100M",
-  "$50M-$100M",
-  "$250M-$500M",
-  "$100M-$250M",
-  "$20M-$50M",
-  "$500M+",
-  "$50M-$100M",
-  "$50M-$100M",
-  "$250M-$500M",
-  "$250M-$500M",
-  "$100M-$250M",
-  "$10M-$20M",
-  "$20M-$50M",
-  "$50M-$100M",
-  "$250M-$500M",
-  "$100M-$250M",
-  "$20M-$50M",
-  "$50M-$100M",
-  "$500M+",
-  "$500M+",
-  "$500M+",
-  "$500M+",
-] as const;
-
-const getAccountTier = (segment: Segment): AccountTier => {
-  if (segment === Segment.STRATEGIC) return AccountTier.STRATEGIC;
-  if (segment === Segment.ENTERPRISE) return AccountTier.TIER_1;
-  if (segment === Segment.MID_MARKET) return AccountTier.TIER_2;
-  return AccountTier.TIER_3;
-};
-
-const getTemperature = (score: number): Temperature => {
-  if (score >= 90) return Temperature.URGENT;
-  if (score >= 80) return Temperature.HOT;
-  if (score >= 65) return Temperature.WARM;
-  return Temperature.COLD;
-};
-
-const getLeadStatus = (temperature: Temperature): LeadStatus => {
-  if (temperature === Temperature.URGENT) return LeadStatus.QUALIFIED;
-  if (temperature === Temperature.HOT) return LeadStatus.WORKING;
-  if (temperature === Temperature.WARM) return LeadStatus.NEW;
-  return LeadStatus.NURTURING;
-};
-
-const getSlaHours = (temperature: Temperature) => {
-  if (temperature === Temperature.URGENT) return 1;
-  if (temperature === Temperature.HOT) return 4;
-  if (temperature === Temperature.WARM) return 12;
-  return 24;
-};
-
-const signalTriples = [
-  {
-    second: SignalType.PRICING_PAGE_VISIT,
-    third: SignalType.FORM_FILL,
-    fourth: SignalType.MEETING_BOOKED,
+    employeeCount: 420,
+    annualRevenueBand: "$50M-$100M",
+    namedOwnerId: "usr_dante_kim",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 29,
+    overallScore: 88,
+    status: AccountStatus.HOT,
   },
   {
-    second: SignalType.HIGH_INTENT_CLUSTER,
-    third: SignalType.WEBINAR_REGISTRATION,
-    fourth: SignalType.EMAIL_REPLY,
+    id: "acc_cedarbridge_health",
+    name: "CedarBridge Health",
+    domain: "cedarbridgehealth.com",
+    segment: Segment.MID_MARKET,
+    industry: "Healthcare",
+    geography: Geography.NA_EAST,
+    employeeCount: 650,
+    annualRevenueBand: "$100M-$250M",
+    namedOwnerId: "usr_amelia_ross",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 24,
+    overallScore: 68,
+    status: AccountStatus.WATCH,
   },
   {
-    second: SignalType.PRICING_PAGE_VISIT,
-    third: SignalType.PRODUCT_SIGNUP,
-    fourth: SignalType.PRODUCT_USAGE_MILESTONE,
+    id: "acc_rivetstack",
+    name: "RivetStack Automation",
+    domain: "rivetstackautomation.com",
+    segment: Segment.ENTERPRISE,
+    industry: "Manufacturing",
+    geography: Geography.NA_WEST,
+    employeeCount: 1180,
+    annualRevenueBand: "$250M-$500M",
+    namedOwnerId: "usr_dante_kim",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 27,
+    overallScore: 76,
+    status: AccountStatus.HEALTHY,
   },
   {
-    second: SignalType.THIRD_PARTY_INTENT,
-    third: SignalType.FORM_FILL,
-    fourth: SignalType.MANUAL_SALES_NOTE,
+    id: "acc_brightharbor_retail",
+    name: "BrightHarbor Retail",
+    domain: "brightharborretail.com",
+    segment: Segment.SMB,
+    industry: "Retail",
+    geography: Geography.NA_WEST,
+    employeeCount: 180,
+    annualRevenueBand: "$20M-$50M",
+    namedOwnerId: null,
+    lifecycleStage: LifecycleStage.PROSPECT,
+    fitScore: 20,
+    overallScore: 59,
+    status: AccountStatus.WATCH,
   },
+  {
+    id: "acc_summitflow_finance",
+    name: "SummitFlow Finance",
+    domain: "summitflowfinance.com",
+    segment: Segment.STRATEGIC,
+    industry: "Fintech",
+    geography: Geography.NA_EAST,
+    employeeCount: 4200,
+    annualRevenueBand: "$500M+",
+    namedOwnerId: "usr_elena_morales",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 30,
+    overallScore: 92,
+    status: AccountStatus.HOT,
+  },
+  {
+    id: "acc_latticebio",
+    name: "LatticeBio Labs",
+    domain: "latticebio.com",
+    segment: Segment.ENTERPRISE,
+    industry: "Healthcare",
+    geography: Geography.EMEA,
+    employeeCount: 1450,
+    annualRevenueBand: "$250M-$500M",
+    namedOwnerId: "usr_noor_haddad",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 28,
+    overallScore: 79,
+    status: AccountStatus.HEALTHY,
+  },
+  {
+    id: "acc_harborpoint",
+    name: "HarborPoint SaaS",
+    domain: "harborpointsaas.com",
+    segment: Segment.ENTERPRISE,
+    industry: "SaaS",
+    geography: Geography.NA_EAST,
+    employeeCount: 980,
+    annualRevenueBand: "$100M-$250M",
+    namedOwnerId: "usr_elena_morales",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 28,
+    overallScore: 86,
+    status: AccountStatus.HOT,
+  },
+  {
+    id: "acc_alloyworks",
+    name: "AlloyWorks Cloud",
+    domain: "alloyworkscloud.com",
+    segment: Segment.ENTERPRISE,
+    industry: "Manufacturing",
+    geography: Geography.EMEA,
+    employeeCount: 1750,
+    annualRevenueBand: "$250M-$500M",
+    namedOwnerId: "usr_noor_haddad",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 26,
+    overallScore: 74,
+    status: AccountStatus.WATCH,
+  },
+  {
+    id: "acc_cedar_loop",
+    name: "Cedar Loop Finance",
+    domain: "cedarloopfinance.com",
+    segment: Segment.SMB,
+    industry: "Fintech",
+    geography: Geography.NA_EAST,
+    employeeCount: 240,
+    annualRevenueBand: "$20M-$50M",
+    namedOwnerId: null,
+    lifecycleStage: LifecycleStage.NURTURE,
+    fitScore: 19,
+    overallScore: 57,
+    status: AccountStatus.AT_RISK,
+  },
+  {
+    id: "acc_frontier_retail",
+    name: "Frontier Retail Systems",
+    domain: "frontierretailsystems.com",
+    segment: Segment.MID_MARKET,
+    industry: "Retail",
+    geography: Geography.APAC,
+    employeeCount: 510,
+    annualRevenueBand: "$50M-$100M",
+    namedOwnerId: "usr_hana_cho",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 24,
+    overallScore: 72,
+    status: AccountStatus.HEALTHY,
+  },
+  {
+    id: "acc_orbitiq",
+    name: "OrbitIQ Security",
+    domain: "orbitiqsecurity.com",
+    segment: Segment.STRATEGIC,
+    industry: "Cybersecurity",
+    geography: Geography.EMEA,
+    employeeCount: 3100,
+    annualRevenueBand: "$500M+",
+    namedOwnerId: "usr_elena_morales",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 29,
+    overallScore: 90,
+    status: AccountStatus.HOT,
+  },
+  {
+    id: "acc_ironpeak",
+    name: "Iron Peak Manufacturing",
+    domain: "ironpeakmfg.com",
+    segment: Segment.STRATEGIC,
+    industry: "Manufacturing",
+    geography: Geography.NA_WEST,
+    employeeCount: 5200,
+    annualRevenueBand: "$500M+",
+    namedOwnerId: "usr_elena_morales",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 31,
+    overallScore: 94,
+    status: AccountStatus.HOT,
+  },
+  {
+    id: "acc_signalnest",
+    name: "SignalNest Software",
+    domain: "signalnestsoftware.com",
+    segment: Segment.SMB,
+    industry: "SaaS",
+    geography: Geography.NA_WEST,
+    employeeCount: 220,
+    annualRevenueBand: "$20M-$50M",
+    namedOwnerId: null,
+    lifecycleStage: LifecycleStage.PROSPECT,
+    fitScore: 22,
+    overallScore: 64,
+    status: AccountStatus.WATCH,
+  },
+  {
+    id: "acc_pinecrest",
+    name: "Pinecrest Labs",
+    domain: "pinecrestlabs.com",
+    segment: Segment.MID_MARKET,
+    industry: "Healthcare",
+    geography: Geography.APAC,
+    employeeCount: 760,
+    annualRevenueBand: "$50M-$100M",
+    namedOwnerId: "usr_hana_cho",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 23,
+    overallScore: 70,
+    status: AccountStatus.HEALTHY,
+  },
+  {
+    id: "acc_novachannel",
+    name: "NovaChannel Commerce",
+    domain: "novachannelcommerce.com",
+    segment: Segment.MID_MARKET,
+    industry: "Retail",
+    geography: Geography.APAC,
+    employeeCount: 680,
+    annualRevenueBand: "$50M-$100M",
+    namedOwnerId: "usr_hana_cho",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 22,
+    overallScore: 67,
+    status: AccountStatus.WATCH,
+  },
+  {
+    id: "acc_aperture_robotics",
+    name: "Aperture Robotics",
+    domain: "aperturerobotics.com",
+    segment: Segment.ENTERPRISE,
+    industry: "Manufacturing",
+    geography: Geography.APAC,
+    employeeCount: 1600,
+    annualRevenueBand: "$250M-$500M",
+    namedOwnerId: "usr_hana_cho",
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 27,
+    overallScore: 78,
+    status: AccountStatus.HEALTHY,
+  },
+  {
+    id: "acc_veritypulse",
+    name: "VerityPulse Health",
+    domain: "veritypulsehealth.com",
+    segment: Segment.MID_MARKET,
+    industry: "Healthcare",
+    geography: Geography.NA_EAST,
+    employeeCount: 720,
+    annualRevenueBand: "$50M-$100M",
+    namedOwnerId: null,
+    lifecycleStage: LifecycleStage.ENGAGED,
+    fitScore: 25,
+    overallScore: 71,
+    status: AccountStatus.WATCH,
+  },
+  {
+    id: "acc_meridian_freight",
+    name: "Meridian Freight Cloud",
+    domain: "meridianfreightcloud.com",
+    segment: Segment.ENTERPRISE,
+    industry: "Logistics",
+    geography: Geography.NA_EAST,
+    employeeCount: 2100,
+    annualRevenueBand: "$500M+",
+    namedOwnerId: "usr_amelia_ross",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 26,
+    overallScore: 79,
+    status: AccountStatus.HEALTHY,
+  },
+  {
+    id: "acc_beaconops",
+    name: "BeaconOps Partners",
+    domain: "beaconopspartners.com",
+    segment: Segment.SMB,
+    industry: "Professional Services",
+    geography: Geography.NA_WEST,
+    employeeCount: 260,
+    annualRevenueBand: "$20M-$50M",
+    namedOwnerId: "usr_miles_turner",
+    lifecycleStage: LifecycleStage.NURTURE,
+    fitScore: 21,
+    overallScore: 61,
+    status: AccountStatus.WATCH,
+  },
+  {
+    id: "acc_atlas_grid",
+    name: "Atlas Grid Systems",
+    domain: "atlasgridsystems.com",
+    segment: Segment.STRATEGIC,
+    industry: "Energy",
+    geography: Geography.EMEA,
+    employeeCount: 2800,
+    annualRevenueBand: "$500M+",
+    namedOwnerId: "usr_elena_morales",
+    lifecycleStage: LifecycleStage.SALES_READY,
+    fitScore: 27,
+    overallScore: 77,
+    status: AccountStatus.HEALTHY,
+  },
+] as const;
+
+const requiredSignalTypes = [
+  SignalType.PRICING_PAGE_VISIT,
+  SignalType.FORM_FILL,
+  SignalType.WEBINAR_REGISTRATION,
+  SignalType.PRODUCT_SIGNUP,
+  SignalType.EMAIL_REPLY,
+  SignalType.MEETING_BOOKED,
+  SignalType.HIGH_INTENT_CLUSTER,
+] as const;
+
+const secondaryLeadAccountIds = new Set([
+  "acc_northstar_analytics",
+  "acc_summitflow_finance",
+  "acc_harborpoint",
+  "acc_orbitiq",
+  "acc_ironpeak",
+  "acc_rivetstack",
+  "acc_latticebio",
+  "acc_aperture_robotics",
+  "acc_meridian_freight",
+  "acc_atlas_grid",
+]);
+
+const accountTaskAccountIds = [
+  "acc_northstar_analytics",
+  "acc_summitflow_finance",
+  "acc_harborpoint",
+  "acc_orbitiq",
+  "acc_ironpeak",
+  "acc_rivetstack",
+  "acc_latticebio",
+  "acc_aperture_robotics",
+  "acc_meridian_freight",
+  "acc_atlas_grid",
 ] as const;
 
 const contactFirstNames = [
@@ -395,10 +542,6 @@ const contactFirstNames = [
   "Ethan",
   "Anika",
   "Kai",
-  "Nina",
-  "Omar",
-  "Talia",
-  "Reid",
 ] as const;
 
 const contactLastNames = [
@@ -422,17 +565,360 @@ const contactLastNames = [
   "Kim",
   "Sullivan",
   "Grant",
-  "Parker",
-  "Lopez",
-  "Chen",
-  "Diaz",
 ] as const;
 
-function contactName(index: number, offset: number) {
+const primaryLeadSources = [
+  "Pricing page revisit",
+  "Signal-qualified inbound",
+  "Webinar follow-up",
+  "Product-led evaluation",
+  "Intent surge",
+  "Partner referral",
+  "Content syndication",
+] as const;
+
+const secondaryLeadSources = [
+  "Buying committee expansion",
+  "Executive follow-up",
+  "Late-stage re-engagement",
+  "Trial activation",
+  "Mutual action plan request",
+] as const;
+
+function getAccountTier(segment: Segment): AccountTier {
+  if (segment === Segment.STRATEGIC) return AccountTier.STRATEGIC;
+  if (segment === Segment.ENTERPRISE) return AccountTier.TIER_1;
+  if (segment === Segment.MID_MARKET) return AccountTier.TIER_2;
+  return AccountTier.TIER_3;
+}
+
+function clampScore(score: number) {
+  return Math.max(35, Math.min(99, score));
+}
+
+function getTemperature(score: number): Temperature {
+  if (score >= 90) return Temperature.URGENT;
+  if (score >= 80) return Temperature.HOT;
+  if (score >= 65) return Temperature.WARM;
+  return Temperature.COLD;
+}
+
+function getLeadStatus(temperature: Temperature): LeadStatus {
+  if (temperature === Temperature.URGENT) return LeadStatus.QUALIFIED;
+  if (temperature === Temperature.HOT) return LeadStatus.WORKING;
+  if (temperature === Temperature.WARM) return LeadStatus.NEW;
+  return LeadStatus.NURTURING;
+}
+
+function getSlaHours(temperature: Temperature) {
+  if (temperature === Temperature.URGENT) return 1;
+  if (temperature === Temperature.HOT) return 4;
+  if (temperature === Temperature.WARM) return 12;
+  return 24;
+}
+
+function getFallbackLeadOwner(geography: Geography) {
+  switch (geography) {
+    case Geography.NA_WEST:
+      return "usr_miles_turner";
+    case Geography.NA_EAST:
+      return "usr_amelia_ross";
+    case Geography.EMEA:
+      return "usr_noor_haddad";
+    case Geography.APAC:
+      return "usr_hana_cho";
+  }
+}
+
+function getContactName(index: number, offset: number) {
   return {
     firstName: contactFirstNames[(index + offset) % contactFirstNames.length],
     lastName: contactLastNames[(index * 3 + offset) % contactLastNames.length],
   };
+}
+
+function getOperationalPersona(industry: string): PersonaProfile {
+  switch (industry) {
+    case "Manufacturing":
+      return {
+        title: "Director of Commercial Operations",
+        department: "Commercial Operations",
+        seniority: "Director",
+        personaType: "Commercial Ops",
+      };
+    case "Healthcare":
+      return {
+        title: "Director of Revenue Operations",
+        department: "Revenue Operations",
+        seniority: "Director",
+        personaType: "RevOps",
+      };
+    case "Retail":
+      return {
+        title: "Head of Ecommerce Operations",
+        department: "Digital Commerce",
+        seniority: "Director",
+        personaType: "Ecommerce Ops",
+      };
+    case "Fintech":
+      return {
+        title: "Director of GTM Systems",
+        department: "GTM Systems",
+        seniority: "Director",
+        personaType: "GTM Systems",
+      };
+    case "Logistics":
+      return {
+        title: "Director of Sales Operations",
+        department: "Sales Operations",
+        seniority: "Director",
+        personaType: "Sales Ops",
+      };
+    case "Cybersecurity":
+      return {
+        title: "Director of Growth Operations",
+        department: "Growth Operations",
+        seniority: "Director",
+        personaType: "Growth Ops",
+      };
+    case "Energy":
+      return {
+        title: "Director of Commercial Systems",
+        department: "Commercial Systems",
+        seniority: "Director",
+        personaType: "Commercial Systems",
+      };
+    case "Professional Services":
+      return {
+        title: "Director of Revenue Operations",
+        department: "Revenue Operations",
+        seniority: "Director",
+        personaType: "RevOps",
+      };
+    default:
+      return {
+        title: "Director of Revenue Operations",
+        department: "Revenue Operations",
+        seniority: "Director",
+        personaType: "RevOps",
+      };
+  }
+}
+
+function getExecutivePersona(segment: Segment, industry: string, index: number): PersonaProfile {
+  if (segment === Segment.STRATEGIC) {
+    return {
+      title: index % 2 === 0 ? "Chief Revenue Officer" : "Chief Commercial Officer",
+      department: "Executive",
+      seniority: "Executive",
+      personaType: industry === "Fintech" ? "Executive Buyer" : "Economic Buyer",
+    };
+  }
+
+  if (segment === Segment.ENTERPRISE) {
+    return {
+      title: index % 2 === 0 ? "VP, Global Sales" : "VP, Demand Generation",
+      department: index % 2 === 0 ? "Sales" : "Marketing",
+      seniority: "Vice President",
+      personaType: index % 2 === 0 ? "Sales Leadership" : "Demand Gen",
+    };
+  }
+
+  if (segment === Segment.MID_MARKET) {
+    return {
+      title: index % 2 === 0 ? "Director of Growth" : "VP, Sales Development",
+      department: index % 2 === 0 ? "Growth" : "Sales",
+      seniority: "Director",
+      personaType: index % 2 === 0 ? "Growth Leader" : "Sales Leadership",
+    };
+  }
+
+  return {
+    title: index % 2 === 0 ? "Head of Marketing" : "VP, Revenue",
+    department: index % 2 === 0 ? "Marketing" : "Revenue",
+    seniority: "Head",
+    personaType: index % 2 === 0 ? "Marketing Leader" : "Revenue Leader",
+  };
+}
+
+function getPhoneNumber(geography: Geography, index: number, slot: number) {
+  const prefix =
+    geography === Geography.EMEA ? "+44" : geography === Geography.APAC ? "+61" : "+1";
+  return `${prefix}-555-${String(1000 + index * 10 + slot).padStart(4, "0")}`;
+}
+
+function getSignalSource(eventType: SignalType) {
+  switch (eventType) {
+    case SignalType.PRICING_PAGE_VISIT:
+      return "Website";
+    case SignalType.FORM_FILL:
+      return "Marketing Automation";
+    case SignalType.WEBINAR_REGISTRATION:
+      return "Events";
+    case SignalType.PRODUCT_SIGNUP:
+      return "Product";
+    case SignalType.EMAIL_REPLY:
+      return "Sales Engagement";
+    case SignalType.MEETING_BOOKED:
+      return "Calendar";
+    case SignalType.HIGH_INTENT_CLUSTER:
+      return "Intent Data";
+  }
+}
+
+function getSignalStatus(eventType: SignalType) {
+  switch (eventType) {
+    case SignalType.FORM_FILL:
+    case SignalType.PRODUCT_SIGNUP:
+    case SignalType.MEETING_BOOKED:
+      return SignalStatus.PROCESSED;
+    default:
+      return SignalStatus.MATCHED;
+  }
+}
+
+function getSignalPayload(account: SeededAccount, eventType: SignalType, index: number) {
+  switch (eventType) {
+    case SignalType.PRICING_PAGE_VISIT:
+      return {
+        raw: {
+          page: "/pricing",
+          visitCount: 2 + (index % 3),
+          utmSource: account.segment === Segment.SMB ? "paid-search" : "direct",
+        },
+        normalized: {
+          pageCluster: "pricing",
+          signalStrength: account.status === AccountStatus.HOT ? "high" : "medium",
+        },
+      };
+    case SignalType.FORM_FILL:
+      return {
+        raw: {
+          formId: "request-demo",
+          campaign: account.industry.toLowerCase().replace(/\s+/g, "-"),
+          persona: "operations",
+        },
+        normalized: {
+          conversionType: "demo-request",
+          signalStrength: "high",
+        },
+      };
+    case SignalType.WEBINAR_REGISTRATION:
+      return {
+        raw: {
+          webinar: "Signal orchestration benchmark",
+          attendanceIntent: account.segment === Segment.STRATEGIC ? "executive-track" : "operator-track",
+        },
+        normalized: {
+          eventMotion: "education",
+          signalStrength: "medium",
+        },
+      };
+    case SignalType.PRODUCT_SIGNUP:
+      return {
+        raw: {
+          workspacePlan: account.segment === Segment.SMB ? "trial" : "pilot",
+          seatRequest: 3 + (index % 5),
+        },
+        normalized: {
+          activationStage: "workspace-created",
+          signalStrength: "high",
+        },
+      };
+    case SignalType.EMAIL_REPLY:
+      return {
+        raw: {
+          threadTopic: "follow-up on routing visibility",
+          replyTone: index % 2 === 0 ? "positive" : "curious",
+        },
+        normalized: {
+          engagementStage: "two-way-conversation",
+          signalStrength: "medium",
+        },
+      };
+    case SignalType.MEETING_BOOKED:
+      return {
+        raw: {
+          meetingType: account.segment === Segment.STRATEGIC ? "exec-review" : "discovery-call",
+          attendees: 2 + (index % 3),
+        },
+        normalized: {
+          engagementStage: "meeting-booked",
+          signalStrength: "high",
+        },
+      };
+    case SignalType.HIGH_INTENT_CLUSTER:
+      return {
+        raw: {
+          provider: "Bombora",
+          topic: account.industry === "Manufacturing" ? "sales forecasting" : "revenue intelligence",
+          intensity: 72 + index,
+        },
+        normalized: {
+          intentTopic: "go-to-market orchestration",
+          signalStrength: "high",
+        },
+      };
+  }
+}
+
+function getLeadInboundType(source: string) {
+  if (source.includes("Product")) return "Product-led";
+  if (source.includes("Webinar") || source.includes("Pricing")) return "Inbound";
+  return "Signal-driven";
+}
+
+function getFirstResponseAt(
+  sequenceIndex: number,
+  temperature: Temperature,
+  routedAt: Date,
+  slaDeadlineAt: Date,
+  preferRecentOpen: boolean,
+) {
+  if (preferRecentOpen && sequenceIndex % 3 === 0) {
+    return null;
+  }
+
+  if (sequenceIndex % 6 === 0) {
+    return null;
+  }
+
+  if (sequenceIndex % 5 === 0) {
+    return addMinutes(slaDeadlineAt, 75);
+  }
+
+  const responseMinutes =
+    temperature === Temperature.URGENT
+      ? 20
+      : temperature === Temperature.HOT
+        ? 55
+        : temperature === Temperature.WARM
+          ? 210
+          : 600;
+
+  return addMinutes(routedAt, responseMinutes);
+}
+
+function getLeadTaskPriority(temperature: Temperature) {
+  if (temperature === Temperature.URGENT) return TaskPriority.URGENT;
+  if (temperature === Temperature.HOT) return TaskPriority.HIGH;
+  return TaskPriority.MEDIUM;
+}
+
+function getLeadTaskDueAt(lead: SeededLead, sequenceIndex: number) {
+  if (lead.temperature === Temperature.URGENT) {
+    return addHours(baseDate, 2 + (sequenceIndex % 3));
+  }
+
+  if (lead.temperature === Temperature.HOT) {
+    return addHours(baseDate, 6 + (sequenceIndex % 6));
+  }
+
+  if (lead.temperature === Temperature.WARM) {
+    return addHours(baseDate, 24 + (sequenceIndex % 3) * 12);
+  }
+
+  return addHours(baseDate, 48 + (sequenceIndex % 3) * 12);
 }
 
 async function main() {
@@ -449,205 +935,212 @@ async function main() {
 
   await prisma.user.createMany({ data: userSeed });
 
-  const accounts = accountBlueprints.map(([id, name, domain, industry], index) => ({
-    id,
-    name,
-    domain,
-    industry,
-    segment: segments[index],
-    geography: geographies[index],
-    employeeCount: employeeCounts[index],
-    annualRevenueBand: revenueBands[index],
-    namedOwnerId: ownerPool[index % ownerPool.length],
-    accountTier: getAccountTier(segments[index]),
-    lifecycleStage: lifecycleStages[index],
-    fitScore: fitScores[index],
-    overallScore: overallScores[index],
-    status: accountStatuses[index],
-    createdAt: subDays(baseDate, 45 - index),
-    updatedAt: subDays(baseDate, index % 6),
+  const accounts: SeededAccount[] = accountBlueprints.map((blueprint, index) => ({
+    ...blueprint,
+    accountTier: getAccountTier(blueprint.segment),
+    createdAt: subDays(baseDate, 90 - index * 2),
+    updatedAt: subDays(baseDate, index % 4),
   }));
 
   await prisma.account.createMany({ data: accounts });
 
-  const contacts = accounts.flatMap((account, index) => {
-    const primary = contactName(index, 0);
-    const secondary = contactName(index, 7);
+  const contacts: SeededContact[] = accounts.flatMap((account, index) => {
+    const operational = getOperationalPersona(account.industry);
+    const executive = getExecutivePersona(account.segment, account.industry, index);
+    const first = getContactName(index, 0);
+    const second = getContactName(index, 7);
 
     return [
       {
         id: `${account.id}_contact_01`,
         accountId: account.id,
-        firstName: primary.firstName,
-        lastName: primary.lastName,
-        email: `${primary.firstName}.${primary.lastName}@${account.domain}`.toLowerCase(),
-        title: "Head of Revenue Operations",
-        department: "Revenue Operations",
-        seniority: "Director",
-        phone: `+1-303-555-${String(1100 + index).padStart(4, "0")}`,
-        personaType: "RevOps",
-        createdAt: subDays(baseDate, 40 - index),
-        updatedAt: subDays(baseDate, index % 4),
+        firstName: first.firstName,
+        lastName: first.lastName,
+        email: `${first.firstName}.${first.lastName}@${account.domain}`.toLowerCase(),
+        title: operational.title,
+        department: operational.department,
+        seniority: operational.seniority,
+        phone: getPhoneNumber(account.geography, index, 1),
+        personaType: operational.personaType,
+        createdAt: subDays(baseDate, 55 - index),
+        updatedAt: subDays(baseDate, index % 3),
       },
       {
         id: `${account.id}_contact_02`,
         accountId: account.id,
-        firstName: secondary.firstName,
-        lastName: secondary.lastName,
-        email: `${secondary.firstName}.${secondary.lastName}@${account.domain}`.toLowerCase(),
-        title: index % 2 === 0 ? "Director of Growth" : "VP, Sales Development",
-        department: index % 2 === 0 ? "Marketing" : "Sales",
-        seniority: "Director",
-        phone: `+1-415-555-${String(2100 + index).padStart(4, "0")}`,
-        personaType: index % 2 === 0 ? "Demand Gen" : "Sales Leadership",
-        createdAt: subDays(baseDate, 38 - index),
-        updatedAt: subDays(baseDate, (index + 1) % 5),
+        firstName: second.firstName,
+        lastName: second.lastName,
+        email: `${second.firstName}.${second.lastName}@${account.domain}`.toLowerCase(),
+        title: executive.title,
+        department: executive.department,
+        seniority: executive.seniority,
+        phone: getPhoneNumber(account.geography, index, 2),
+        personaType: executive.personaType,
+        createdAt: subDays(baseDate, 53 - index),
+        updatedAt: subDays(baseDate, (index + 1) % 4),
       },
     ];
   });
 
   await prisma.contact.createMany({ data: contacts });
 
-  const baseLeads = accounts.map((account, index) => {
-    const createdAt = subDays(baseDate, 12 - (index % 10));
-    const temperature = getTemperature(account.overallScore);
-    const routedAt = addMinutes(createdAt, 20 + (index % 4) * 15);
-    const slaDeadlineAt = addHours(createdAt, getSlaHours(temperature));
-    const firstResponseAt =
-      index % 5 === 0 ? null : addMinutes(routedAt, 20 + (index % 3) * 25);
+  const leads: SeededLead[] = accounts.flatMap((account, index) => {
+    const primaryScore = clampScore(
+      account.overallScore + (account.status === AccountStatus.HOT ? 2 : -4 + (index % 6)),
+    );
+    const primaryCreatedAt =
+      account.status === AccountStatus.HOT
+        ? subHours(baseDate, 10 + index * 2)
+        : subHours(baseDate, 56 + (index % 6) * 12);
+    const primaryTemperature = getTemperature(primaryScore);
+    const primaryRoutedAt = addMinutes(primaryCreatedAt, 18 + (index % 4) * 12);
+    const primarySlaDeadlineAt = addHours(primaryCreatedAt, getSlaHours(primaryTemperature));
+    const primaryFirstResponseAt = getFirstResponseAt(
+      index,
+      primaryTemperature,
+      primaryRoutedAt,
+      primarySlaDeadlineAt,
+      false,
+    );
+    const ownerId = account.namedOwnerId ?? getFallbackLeadOwner(account.geography);
 
-    return {
+    const primaryLead: SeededLead = {
       id: `${account.id}_lead_01`,
       accountId: account.id,
       contactId: `${account.id}_contact_01`,
-      source: [
-        "Inbound demo",
-        "Pricing page",
-        "Webinar",
-        "Product sign-up",
-        "Intent surge",
-        "Partner referral",
-      ][index % 6],
-      inboundType: index % 3 === 0 ? "Inbound" : index % 3 === 1 ? "Product-led" : "Signal-driven",
-      currentOwnerId: account.namedOwnerId,
-      status: getLeadStatus(temperature),
-      score: Math.max(32, account.overallScore - (index % 8)),
-      temperature,
-      slaDeadlineAt,
-      firstResponseAt,
-      routedAt,
-      createdAt,
-      updatedAt: addHours(createdAt, 4),
+      source: primaryLeadSources[index % primaryLeadSources.length],
+      inboundType: getLeadInboundType(primaryLeadSources[index % primaryLeadSources.length]),
+      currentOwnerId: ownerId,
+      status: getLeadStatus(primaryTemperature),
+      score: primaryScore,
+      temperature: primaryTemperature,
+      slaDeadlineAt: primarySlaDeadlineAt,
+      firstResponseAt: primaryFirstResponseAt,
+      routedAt: primaryRoutedAt,
+      createdAt: primaryCreatedAt,
+      updatedAt: addHours(primaryCreatedAt, 3),
     };
-  });
 
-  const extraLeadAccounts = [accounts[2], accounts[7], accounts[12], accounts[21]];
-  const extraLeads = extraLeadAccounts.map((account, index) => {
-    const createdAt = subDays(baseDate, 2 + index);
-    const routedAt = addMinutes(createdAt, 10 + index * 7);
-    return {
+    if (!secondaryLeadAccountIds.has(account.id)) {
+      return [primaryLead];
+    }
+
+    const secondaryScore = clampScore(account.overallScore + 4 - (index % 2));
+    const secondaryCreatedAt = subMinutes(baseDate, 35 + index * 18);
+    const secondaryTemperature = getTemperature(secondaryScore);
+    const secondaryRoutedAt = addMinutes(secondaryCreatedAt, 10 + (index % 3) * 8);
+    const secondarySlaDeadlineAt = addHours(secondaryCreatedAt, getSlaHours(secondaryTemperature));
+    const secondaryFirstResponseAt = getFirstResponseAt(
+      index,
+      secondaryTemperature,
+      secondaryRoutedAt,
+      secondarySlaDeadlineAt,
+      true,
+    );
+
+    const secondaryLead: SeededLead = {
       id: `${account.id}_lead_02`,
       accountId: account.id,
       contactId: `${account.id}_contact_02`,
-      source: "High-intent revisit",
+      source: secondaryLeadSources[index % secondaryLeadSources.length],
       inboundType: "Signal-driven",
-      currentOwnerId: account.namedOwnerId,
-      status: LeadStatus.WORKING,
-      score: Math.min(99, account.overallScore + 3),
-      temperature: Temperature.HOT,
-      slaDeadlineAt: addHours(createdAt, 4),
-      firstResponseAt: index % 2 === 0 ? addMinutes(routedAt, 25) : null,
-      routedAt,
-      createdAt,
-      updatedAt: addHours(createdAt, 3),
+      currentOwnerId: ownerId,
+      status: getLeadStatus(secondaryTemperature),
+      score: secondaryScore,
+      temperature: secondaryTemperature,
+      slaDeadlineAt: secondarySlaDeadlineAt,
+      firstResponseAt: secondaryFirstResponseAt,
+      routedAt: secondaryRoutedAt,
+      createdAt: secondaryCreatedAt,
+      updatedAt: addHours(secondaryCreatedAt, 2),
     };
+
+    return [primaryLead, secondaryLead];
   });
 
-  const leads = [...baseLeads, ...extraLeads];
   await prisma.lead.createMany({ data: leads });
 
-  const signalEvents = accounts.flatMap((account, index) => {
-    const leadId = `${account.id}_lead_01`;
-    const contactId = `${account.id}_contact_01`;
-    const bundle = signalTriples[index % signalTriples.length];
-    const unmatchedEvent = index >= accounts.length - 4;
+  const signalEvents = [
+    ...accounts.flatMap((account, index) => {
+      const accountContacts = contacts.filter((contact) => contact.accountId === account.id);
+      const accountLeads = leads.filter((lead) => lead.accountId === account.id);
+      const signalTypes =
+        account.status === AccountStatus.HOT
+          ? [...requiredSignalTypes]
+          : Array.from({ length: 4 }, (_, offset) => {
+              return requiredSignalTypes[(index + offset) % requiredSignalTypes.length];
+            });
+      const dayOffsets = account.status === AccountStatus.HOT ? [11, 8, 6, 4, 2, 1, 0] : [12, 8, 4, 1];
 
-    return [
-      {
-        id: `${account.id}_signal_01`,
-        sourceSystem: "Web",
-        eventType: SignalType.WEBSITE_VISIT,
-        accountId: account.id,
-        contactId,
-        leadId,
-        rawPayloadJson: { page: "/solutions", utmSource: "organic" },
-        normalizedPayloadJson: { pageCluster: "awareness", signalStrength: "low" },
-        occurredAt: subDays(baseDate, 13 - (index % 4)),
-        receivedAt: subDays(baseDate, 13 - (index % 4)),
-        dedupeKey: `${account.id}_web_01`,
-        status: SignalStatus.MATCHED,
-      },
-      {
-        id: `${account.id}_signal_02`,
-        sourceSystem: index % 2 === 0 ? "Web" : "Intent",
-        eventType: bundle.second,
-        accountId: account.id,
-        contactId,
-        leadId,
-        rawPayloadJson: { page: "/pricing", source: index % 2 === 0 ? "session" : "bombora" },
-        normalizedPayloadJson: { pageCluster: "high-intent", signalStrength: "medium" },
-        occurredAt: subDays(baseDate, 8 - (index % 3)),
-        receivedAt: subDays(baseDate, 8 - (index % 3)),
-        dedupeKey: `${account.id}_web_02`,
-        status: SignalStatus.MATCHED,
-      },
-      {
-        id: `${account.id}_signal_03`,
-        sourceSystem: bundle.third === SignalType.PRODUCT_SIGNUP ? "Product" : "Marketing",
-        eventType: bundle.third,
-        accountId: account.id,
-        contactId,
-        leadId,
-        rawPayloadJson: { campaign: "q1-demand-surge", form: "request-demo" },
-        normalizedPayloadJson: { pageCluster: "conversion", signalStrength: "high" },
-        occurredAt: subDays(baseDate, 5 - (index % 2)),
-        receivedAt: subDays(baseDate, 5 - (index % 2)),
-        dedupeKey: `${account.id}_event_03`,
-        status: SignalStatus.PROCESSED,
-      },
-      {
-        id: `${account.id}_signal_04`,
-        sourceSystem: bundle.fourth === SignalType.MEETING_BOOKED ? "Calendar" : "Sales",
-        eventType: bundle.fourth,
-        accountId: unmatchedEvent ? null : account.id,
-        contactId: unmatchedEvent ? null : contactId,
-        leadId: unmatchedEvent ? null : leadId,
-        rawPayloadJson: unmatchedEvent
-          ? { email: `unknown+${index}@example.com`, page: "/pricing" }
-          : { rep: account.namedOwnerId, note: "Strong buying committee interest" },
-        normalizedPayloadJson: unmatchedEvent
-          ? { matchConfidence: "low", recommendedQueue: "ops-review" }
-          : { action: "follow-up", signalStrength: "high" },
-        occurredAt: subDays(baseDate, 1),
-        receivedAt: subDays(baseDate, 1),
-        dedupeKey: `${account.id}_event_04`,
-        status: unmatchedEvent ? SignalStatus.UNMATCHED : SignalStatus.MATCHED,
-      },
-    ];
-  });
+      return signalTypes.map((eventType, signalIndex) => {
+        const signalPayload = getSignalPayload(account, eventType, signalIndex);
+        const contact = accountContacts[signalIndex % accountContacts.length];
+        const lead = accountLeads[signalIndex % accountLeads.length];
+        const occurredAt = addMinutes(
+          subDays(baseDate, dayOffsets[signalIndex]),
+          index * 13 + signalIndex * 17,
+        );
+        const receivedAt = addMinutes(occurredAt, signalIndex % 2 === 0 ? 6 : 18);
+
+        return {
+          id: `${account.id}_signal_${String(signalIndex + 1).padStart(2, "0")}`,
+          sourceSystem: getSignalSource(eventType),
+          eventType,
+          accountId: account.id,
+          contactId: contact.id,
+          leadId: lead?.id ?? null,
+          rawPayloadJson: signalPayload.raw,
+          normalizedPayloadJson: signalPayload.normalized,
+          occurredAt,
+          receivedAt,
+          dedupeKey: `${account.id}_${eventType}_${signalIndex + 1}`,
+          status: getSignalStatus(eventType),
+        };
+      });
+    }),
+    ...Array.from({ length: 5 }, (_, index) => {
+      const eventType = requiredSignalTypes[index];
+      const payload = getSignalPayload(accounts[index], eventType, index);
+      const occurredAt = subMinutes(baseDate, 45 + index * 22);
+      return {
+        id: `sig_unmatched_${String(index + 1).padStart(2, "0")}`,
+        sourceSystem: getSignalSource(eventType),
+        eventType,
+        accountId: null,
+        contactId: null,
+        leadId: null,
+        rawPayloadJson: {
+          ...payload.raw,
+          email: `unknown+${index + 1}@${accounts[index].domain}`,
+          accountDomain: accounts[index].domain,
+        },
+        normalizedPayloadJson: {
+          ...payload.normalized,
+          matchConfidence: "low",
+          recommendedQueue: "ops-review",
+        },
+        occurredAt,
+        receivedAt: addMinutes(occurredAt, 4),
+        dedupeKey: `unmatched_${index + 1}`,
+        status: SignalStatus.UNMATCHED,
+      };
+    }),
+  ];
 
   await prisma.signalEvent.createMany({ data: signalEvents });
 
-  const routingDecisions = leads.map((lead, index) => {
-    const account = accounts.find((item) => item.id === lead.accountId)!;
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+
+  const routingDecisions = leads.map((lead) => {
+    const account = accountById.get(lead.accountId)!;
     const decisionType =
-      account.accountTier === AccountTier.STRATEGIC
+      account.segment === Segment.STRATEGIC
         ? RoutingReason.STRATEGIC_ESCALATION
-        : index % 4 === 0
+        : account.namedOwnerId
           ? RoutingReason.NAMED_ACCOUNT
-          : index % 4 === 1
-            ? RoutingReason.TERRITORY_SEGMENT
-            : RoutingReason.ROUND_ROBIN;
+          : lead.temperature === Temperature.COLD
+            ? RoutingReason.ROUND_ROBIN
+            : RoutingReason.TERRITORY_SEGMENT;
 
     return {
       id: `${lead.id}_route`,
@@ -657,24 +1150,30 @@ async function main() {
       decisionType,
       assignedOwnerId: lead.currentOwnerId,
       assignedTeam:
-        account.segment === Segment.STRATEGIC
-          ? "Strategic Coverage"
-          : `${account.geography.replace("_", " ")} ${account.segment.replace("_", " ")}`,
+        account.geography === Geography.NA_WEST
+          ? "NA West"
+          : account.geography === Geography.NA_EAST
+            ? "NA East"
+            : account.geography === Geography.EMEA
+              ? "EMEA"
+              : "APAC",
       assignedQueue:
         lead.temperature === Temperature.URGENT
-          ? "hot-inbound"
+          ? "exec-priority"
           : lead.temperature === Temperature.HOT
-            ? "signal-followup"
-            : "nurture-review",
+            ? "hot-inbound"
+            : lead.temperature === Temperature.WARM
+              ? "signal-followup"
+              : "nurture-review",
       explanation:
         decisionType === RoutingReason.STRATEGIC_ESCALATION
-          ? "Strategic tier account escalated to paired AE + SDR coverage."
+          ? "Strategic account routed to paired executive coverage after strong buying signals."
           : decisionType === RoutingReason.NAMED_ACCOUNT
-            ? "Existing named account owner retained for continuity."
+            ? "Existing named owner retained to keep account context and multithread continuity."
             : decisionType === RoutingReason.TERRITORY_SEGMENT
-              ? "Matched territory and segment policy for this inbound motion."
-              : "Lead routed through eligible rotation for balanced coverage.",
-      createdAt: lead.routedAt ?? addHours(lead.createdAt, 2),
+              ? "Lead assigned by geography and segment coverage policy."
+              : "Lead distributed through the fallback rotation because the account has no named owner.",
+      createdAt: lead.routedAt,
     };
   });
 
@@ -682,55 +1181,82 @@ async function main() {
 
   const tasks = [
     ...leads.map((lead, index) => {
-      const account = accounts.find((item) => item.id === lead.accountId)!;
+      const account = accountById.get(lead.accountId)!;
+      const isSecondaryLead = lead.id.endsWith("_lead_02");
+      const primaryTaskStatus = index % 4 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN;
+      const secondaryTaskStatus =
+        index % 3 === 0 ? TaskStatus.COMPLETED : index % 2 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN;
+      const status = isSecondaryLead ? secondaryTaskStatus : primaryTaskStatus;
+      const dueAt = getLeadTaskDueAt(lead, index);
+
       return {
         id: `${lead.id}_task_01`,
         leadId: lead.id,
         accountId: lead.accountId,
         ownerId: lead.currentOwnerId,
-        taskType: lead.temperature === Temperature.URGENT ? TaskType.CALL : TaskType.EMAIL,
-        priority:
+        taskType:
           lead.temperature === Temperature.URGENT
-            ? TaskPriority.URGENT
+            ? TaskType.CALL
             : lead.temperature === Temperature.HOT
-              ? TaskPriority.HIGH
-              : TaskPriority.MEDIUM,
-        dueAt: lead.slaDeadlineAt ?? addHours(lead.createdAt, 12),
-        status: index % 6 === 0 ? TaskStatus.IN_PROGRESS : index % 5 === 0 ? TaskStatus.COMPLETED : TaskStatus.OPEN,
+              ? TaskType.EMAIL
+              : TaskType.RESEARCH,
+        priority: getLeadTaskPriority(lead.temperature),
+        dueAt,
+        status,
         title:
           lead.temperature === Temperature.URGENT
-            ? `Call ${account.name} within SLA`
-            : `Send tailored follow-up to ${account.name}`,
+            ? `Call ${account.name} within the active SLA`
+            : isSecondaryLead
+              ? `Expand buying committee coverage for ${account.name}`
+              : `Send tailored follow-up to ${account.name}`,
         description:
           lead.temperature === Temperature.URGENT
-            ? "High-intent form and pricing activity detected. Confirm buying timeline and book next step."
-            : "Use the latest signal bundle to personalize the next touch and validate ownership.",
+            ? "Recent pricing, meeting, and intent activity signals a live opportunity. Confirm timing and next-step owner."
+            : isSecondaryLead
+              ? "Bring the executive stakeholder into the thread and validate decision criteria across the buying group."
+              : "Use the latest signal bundle to personalize the next touch and qualify urgency.",
         createdAt: lead.createdAt,
-        completedAt: index % 5 === 0 ? addHours(lead.createdAt, 6) : null,
+        completedAt: status === TaskStatus.COMPLETED ? addHours(lead.createdAt, 8) : null,
       };
     }),
-    ...accounts.slice(0, 8).map((account, index) => ({
-      id: `${account.id}_task_account_${index + 1}`,
-      leadId: null,
-      accountId: account.id,
-      ownerId: account.namedOwnerId,
-      taskType: index % 2 === 0 ? TaskType.RESEARCH : TaskType.REVIEW,
-      priority: index < 4 ? TaskPriority.HIGH : TaskPriority.MEDIUM,
-      dueAt: addHours(baseDate, 6 + index * 2),
-      status: index % 3 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN,
-      title: `Refresh signal context for ${account.name}`,
-      description:
-        "Review the latest account activity, confirm routing quality, and prepare the next-best action summary.",
-      createdAt: subDays(baseDate, 2),
-      completedAt: null,
-    })),
+    ...accountTaskAccountIds.map((accountId, index) => {
+      const account = accountById.get(accountId)!;
+      const ownerId = account.namedOwnerId ?? getFallbackLeadOwner(account.geography);
+      const isHotAccount = account.status === AccountStatus.HOT;
+
+      return {
+        id: `${account.id}_task_account_${String(index + 1).padStart(2, "0")}`,
+        leadId: null,
+        accountId: account.id,
+        ownerId,
+        taskType: index % 2 === 0 ? TaskType.REVIEW : TaskType.HANDOFF,
+        priority: isHotAccount ? TaskPriority.HIGH : TaskPriority.MEDIUM,
+        dueAt: isHotAccount ? addHours(baseDate, 10 + index) : addHours(baseDate, 36 + index * 4),
+        status: index % 3 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN,
+        title:
+          isHotAccount
+            ? `Prepare executive brief for ${account.name}`
+            : `Refresh account plan for ${account.name}`,
+        description:
+          isHotAccount
+            ? "Consolidate the latest signals, routing trace, and stakeholder map ahead of the next executive touch."
+            : "Review open signal clusters, confirm owner coverage, and update the next-best action summary.",
+        createdAt: subDays(baseDate, 1),
+        completedAt: null,
+      };
+    }),
   ];
 
   await prisma.task.createMany({ data: tasks });
 
-  const scoreHistory = accounts.flatMap((account) => {
-    const intentScore = Math.max(16, Math.round((account.overallScore - account.fitScore) * 0.45));
-    const engagementScore = account.overallScore - account.fitScore - intentScore;
+  const scoreHistory = accounts.flatMap((account, index) => {
+    const intentDelta =
+      account.status === AccountStatus.HOT
+        ? 31 + (index % 2)
+        : account.segment === Segment.STRATEGIC
+          ? 24
+          : 18 + (index % 4);
+    const engagementDelta = account.overallScore - account.fitScore - intentDelta;
 
     return [
       {
@@ -743,8 +1269,8 @@ async function main() {
         newScore: account.fitScore,
         delta: account.fitScore,
         scoreComponent: ScoreComponent.FIT,
-        reasonCode: "ICP alignment and account tier calibration.",
-        createdAt: subDays(baseDate, 14),
+        reasonCode: "ICP fit, segment weighting, and account tier calibration.",
+        createdAt: subDays(baseDate, 18),
       },
       {
         id: `${account.id}_score_intent`,
@@ -753,10 +1279,10 @@ async function main() {
         accountId: account.id,
         leadId: null,
         previousScore: account.fitScore,
-        newScore: account.fitScore + intentScore,
-        delta: intentScore,
+        newScore: account.fitScore + intentDelta,
+        delta: intentDelta,
         scoreComponent: ScoreComponent.INTENT,
-        reasonCode: "Pricing visits, demo requests, and intent spikes increased buying signal.",
+        reasonCode: "Pricing visits, form conversion, and intent spikes increased buying confidence.",
         createdAt: subDays(baseDate, 8),
       },
       {
@@ -765,12 +1291,12 @@ async function main() {
         entityId: account.id,
         accountId: account.id,
         leadId: null,
-        previousScore: account.fitScore + intentScore,
+        previousScore: account.fitScore + intentDelta,
         newScore: account.overallScore,
-        delta: engagementScore,
+        delta: engagementDelta,
         scoreComponent: ScoreComponent.ENGAGEMENT,
-        reasonCode: "Sales touches and follow-up actions increased engagement confidence.",
-        createdAt: subDays(baseDate, 3),
+        reasonCode: "Follow-up activity, stakeholder replies, and meeting activity lifted engagement confidence.",
+        createdAt: subDays(baseDate, 2),
       },
     ];
   });
@@ -778,7 +1304,8 @@ async function main() {
   await prisma.scoreHistory.createMany({ data: scoreHistory });
 
   const auditLogs = accounts.flatMap((account, index) => {
-    const lead = leads.find((item) => item.accountId === account.id);
+    const primaryLead = leads.find((lead) => lead.accountId === account.id && lead.id.endsWith("_lead_01"))!;
+    const signalCount = account.status === AccountStatus.HOT ? 7 : 4;
 
     return [
       {
@@ -789,11 +1316,11 @@ async function main() {
         entityType: "Account",
         entityId: account.id,
         accountId: account.id,
-        leadId: lead?.id ?? null,
+        leadId: primaryLead.id,
         beforeState: Prisma.JsonNull,
-        afterState: { signalCount: signalEvents.filter((event) => event.accountId === account.id).length },
-        explanation: "New signal bundle attached to account timeline.",
-        createdAt: subDays(baseDate, 5),
+        afterState: { signalCount, mostRecentSource: signalCount === 7 ? "Calendar" : "Website" },
+        explanation: "Recent account activity was normalized and attached to the unified account timeline.",
+        createdAt: subDays(baseDate, 3),
       },
       {
         id: `${account.id}_audit_score`,
@@ -803,28 +1330,35 @@ async function main() {
         entityType: "Account",
         entityId: account.id,
         accountId: account.id,
-        leadId: lead?.id ?? null,
-        beforeState: { score: Math.max(0, account.overallScore - 12) },
+        leadId: primaryLead.id,
+        beforeState: { score: Math.max(0, account.overallScore - 11) },
         afterState: { score: account.overallScore },
-        explanation: "Account score recalculated after recent intent and engagement signals.",
-        createdAt: subDays(baseDate, 3),
+        explanation: "Fit, intent, and engagement components were recalculated after the latest signal cluster.",
+        createdAt: subDays(baseDate, 2),
       },
       {
         id: `${account.id}_audit_route`,
         eventType: AuditEventType.ROUTE_ASSIGNED,
         actorType: "system",
         actorName: "Routing Engine",
-        entityType: lead ? "Lead" : "Account",
-        entityId: lead?.id ?? account.id,
+        entityType: "Lead",
+        entityId: primaryLead.id,
         accountId: account.id,
-        leadId: lead?.id ?? null,
-        beforeState: { queue: "unassigned" },
-        afterState: { queue: lead ? "active" : "monitoring" },
+        leadId: primaryLead.id,
+        beforeState: { queue: "pending" },
+        afterState: {
+          queue:
+            primaryLead.temperature === Temperature.URGENT
+              ? "exec-priority"
+              : primaryLead.temperature === Temperature.HOT
+                ? "hot-inbound"
+                : "signal-followup",
+        },
         explanation:
-          index % 4 === 0
-            ? "Named owner preserved after signal surge."
-            : "Territory and segment policy assigned the active working queue.",
-        createdAt: subDays(baseDate, 2),
+          index % 2 === 0
+            ? "Lead moved into the active follow-up queue based on owner coverage and current urgency."
+            : "Routing policy preserved account context and assigned the working owner without manual intervention.",
+        createdAt: subDays(baseDate, 1),
       },
     ];
   });
@@ -863,16 +1397,18 @@ async function main() {
             "ops-review",
           ],
           queues: {
-            urgent: "hot-inbound",
-            high: "signal-followup",
-            default: "nurture-review",
+            urgent: "exec-priority",
+            high: "hot-inbound",
+            default: "signal-followup",
           },
         },
       },
     ],
   });
 
-  console.log("Seeded GTM Signal Orchestrator demo data.");
+  console.log(
+    "Seeded GTM Signal Orchestrator demo data: 8 users, 20 accounts, 40 contacts, 30 leads, 100 signal events, and 40 tasks.",
+  );
 }
 
 main()

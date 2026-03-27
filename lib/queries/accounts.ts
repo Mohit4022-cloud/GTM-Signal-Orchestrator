@@ -16,6 +16,7 @@ import type {
   SelectOption,
 } from "@/lib/contracts/data-access";
 import { getAccountTimeline } from "@/lib/data/signals";
+import { getContactDisplayName } from "@/lib/data/signals/presentation";
 import { db } from "@/lib/db";
 import {
   formatCompactNumber,
@@ -403,7 +404,7 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       : null,
     contacts: account.contacts.map((contact) => ({
       id: contact.id,
-      fullName: `${contact.firstName} ${contact.lastName}`,
+      fullName: getContactDisplayName(contact.firstName, contact.lastName, contact.email),
       title: contact.title,
       department: contact.department,
       seniority: contact.seniority,
@@ -422,7 +423,7 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       score: lead.score,
       contactId: lead.contactId,
       contactName: lead.contact
-        ? `${lead.contact.firstName} ${lead.contact.lastName}`
+        ? getContactDisplayName(lead.contact.firstName, lead.contact.lastName, null)
         : null,
       currentOwnerId: lead.currentOwnerId,
       currentOwnerName: lead.currentOwner?.name ?? null,
@@ -437,21 +438,21 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       return {
         id: signal.signalId,
         eventType: signal.eventType,
-        eventTypeLabel: formatEnumLabel(signal.eventType),
-        sourceSystem: formatEnumLabel(signal.sourceSystem),
-        status: signal.matchStatus,
-        statusLabel: formatEnumLabel(signal.matchStatus),
+        eventTypeLabel: signal.eventTypeLabel,
+        sourceSystem: signal.sourceSystemLabel,
+        status: signal.status,
+        statusLabel: signal.statusLabel,
         occurredAtIso: signal.occurredAtIso,
         occurredAtLabel: formatRelativeTime(signal.occurredAtIso),
-        receivedAtIso: signal.occurredAtIso,
-        receivedAtLabel: formatRelativeTime(signal.occurredAtIso),
+        receivedAtIso: signal.receivedAtIso,
+        receivedAtLabel: formatRelativeTime(signal.receivedAtIso),
         accountId: account.id,
         accountName: account.name,
         contactId: signal.associatedContact?.id ?? null,
-        contactName: signal.associatedContact?.fullName ?? null,
+        contactName: signal.associatedContact?.name ?? null,
         leadId: null,
         leadDisplay: null,
-        isUnmatched: signal.matchStatus === "UNMATCHED",
+        isUnmatched: signal.status === "UNMATCHED",
         description: signal.displaySubtitle,
       };
     }),

@@ -36,6 +36,7 @@ export type IngestibleSignalEventType = (typeof ingestibleSignalEventTypes)[numb
 export type IdentityResolutionCode = (typeof identityResolutionCodeValues)[number];
 export type JsonRecord = Record<string, unknown>;
 export type SignalRawReferenceContract = Record<string, string>;
+export type SignalReasonTone = "default" | "warning" | "danger";
 
 export type SignalNormalizedSummaryContract = {
   accountDomain: string | null;
@@ -119,6 +120,14 @@ export type UploadSignalsCsvResult = {
   rows: UploadSignalsCsvRowResult[];
 };
 
+export type SignalReasonDetailContract = {
+  code: IdentityResolutionCode;
+  label: string;
+  description: string;
+  tone: SignalReasonTone;
+  recommendedQueue: string;
+};
+
 export type RecentSignalFeedItemContract = {
   signalId: string;
   sourceSystem: string;
@@ -134,16 +143,20 @@ export type RecentSignalFeedItemContract = {
 
 export type TimelineAssociatedContactContract = {
   id: string;
-  fullName: string;
+  name: string;
   email: string;
 };
 
 export type AccountTimelineItemContract = {
   signalId: string;
   eventType: SignalType;
+  eventTypeLabel: string;
   sourceSystem: string;
+  sourceSystemLabel: string;
   occurredAtIso: string;
-  matchStatus: SignalStatus;
+  receivedAtIso: string;
+  status: SignalStatus;
+  statusLabel: string;
   displayTitle: string;
   displaySubtitle: string;
   normalizedSummary: SignalNormalizedSummaryContract;
@@ -163,15 +176,25 @@ export type GetUnmatchedSignalsFilters = {
 
 export type UnmatchedSignalQueueItemContract = {
   signalId: string;
+  status: SignalStatus;
   sourceSystem: string;
+  sourceSystemLabel: string;
   eventType: SignalType;
+  eventTypeLabel: string;
   occurredAtIso: string;
+  receivedAtIso: string;
+  displayTitle: string;
+  displaySubtitle: string;
   accountDomainCandidate: string | null;
+  accountDomainDisplay: string;
   contactEmailCandidate: string | null;
+  contactEmailDisplay: string;
   reasonCodes: IdentityResolutionCode[];
+  reasonDetails: SignalReasonDetailContract[];
+  primaryReason: SignalReasonDetailContract;
+  recommendedQueue: string;
   normalizedSummary: SignalNormalizedSummaryContract;
   createdAtIso: string;
-  receivedAtIso: string;
 };
 
 export type SignalAuditEntryContract = {
@@ -201,4 +224,36 @@ export type SignalDetailContract = {
   normalizedPayload: CanonicalSignalEventContract;
   normalizedSummary: SignalNormalizedSummaryContract;
   auditTrail: SignalAuditEntryContract[];
+};
+
+export type PublicIngestSignalResponseContract = {
+  signalId: string;
+  created: boolean;
+  status: SignalStatus;
+  outcome: IngestSignalOutcome;
+  matchedEntities: MatchedEntitiesContract;
+  reasonCodes: IdentityResolutionCode[];
+};
+
+export type PublicSignalUploadRowResponseContract = UploadSignalsCsvRowResult;
+
+export type PublicSignalUploadResponseContract = {
+  processed: number;
+  inserted: number;
+  duplicates: number;
+  unmatched: number;
+  errors: number;
+  rows: PublicSignalUploadRowResponseContract[];
+};
+
+export type PublicSignalApiErrorCode =
+  | "SIGNAL_VALIDATION_ERROR"
+  | "UPLOAD_FILE_REQUIRED"
+  | "SIGNAL_INTERNAL_ERROR"
+  | "UPLOAD_INTERNAL_ERROR";
+
+export type PublicSignalApiErrorResponseContract = {
+  code: PublicSignalApiErrorCode;
+  message: string;
+  error: string | null;
 };

@@ -12,24 +12,13 @@ import {
   getRecentSignals as getRecentSignalFeed,
   getUnmatchedSignals,
 } from "@/lib/data/signals";
+import { getRecommendedQueue } from "@/lib/data/signals/presentation";
 import { db } from "@/lib/db";
 import { formatCompactNumber, formatEnumLabel, formatRelativeTime } from "@/lib/formatters/display";
 import type { ModulePlaceholderConfig } from "@/lib/types";
 
 function getRelativeLabel(value: Date | null | undefined) {
   return value ? formatRelativeTime(value) : null;
-}
-
-function getRecommendedQueue(reasonCodes: string[]) {
-  if (reasonCodes.includes("conflicting_match_candidates")) {
-    return "Conflict review";
-  }
-
-  if (reasonCodes.includes("no_domain_provided") || reasonCodes.includes("no_email_provided")) {
-    return "Identity triage";
-  }
-
-  return "Ops review";
 }
 
 function mapRecentSignal(signal: Awaited<ReturnType<typeof getRecentSignalFeed>>[number]): RecentSignalContract {
@@ -305,10 +294,10 @@ async function getUnmatchedDashboardSignals() {
 
   return signals.map((signal) => ({
     id: signal.signalId,
-    eventType: formatEnumLabel(signal.eventType),
-    sourceSystem: formatEnumLabel(signal.sourceSystem),
+    eventType: signal.eventTypeLabel,
+    sourceSystem: signal.sourceSystemLabel,
     receivedAt: formatRelativeTime(signal.receivedAtIso),
-    recommendation: getRecommendedQueue(signal.reasonCodes),
+    recommendation: signal.recommendedQueue,
   }));
 }
 

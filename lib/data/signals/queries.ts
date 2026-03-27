@@ -15,9 +15,20 @@ import type {
 } from "@/lib/contracts/signals";
 import { identityResolutionCodeValues } from "@/lib/contracts/signals";
 import { db } from "@/lib/db";
-import { formatEnumLabel } from "@/lib/formatters/display";
 
 import { normalizeSourceSystem } from "./shared";
+import {
+  buildTimelineDisplaySubtitle,
+  buildUnmatchedDisplaySubtitle,
+  formatSignalEventLabel,
+  getAccountDomainDisplay,
+  getContactDisplayName,
+  getContactEmailDisplay,
+  getPrimarySignalReason,
+  getRecommendedQueue,
+  getSignalReasonDetails,
+  toIsoTimestamp,
+} from "./presentation";
 
 const reasonCodeSet = new Set<IdentityResolutionCode>(identityResolutionCodeValues);
 
@@ -56,6 +67,7 @@ function buildMatchedEntities(signal: {
         id: string;
         firstName: string;
         lastName: string;
+        email: string;
       }
     | null;
   lead:
@@ -70,7 +82,11 @@ function buildMatchedEntities(signal: {
     contact: signal.contact
       ? {
           id: signal.contact.id,
-          name: `${signal.contact.firstName} ${signal.contact.lastName}`,
+          name: getContactDisplayName(
+            signal.contact.firstName,
+            signal.contact.lastName,
+            signal.contact.email,
+          ),
         }
       : null,
     lead: signal.lead
@@ -100,22 +116,6 @@ function buildNormalizedSummary(signal: {
     payloadSummary: signal.payloadSummary,
     rawReference: parseRawReference(signal.normalizedPayloadJson),
   };
-}
-
-function buildTimelineSubtitle(signal: {
-  payloadSummary: string;
-  contact:
-    | {
-        firstName: string;
-        lastName: string;
-      }
-    | null;
-}) {
-  if (!signal.contact) {
-    return signal.payloadSummary;
-  }
-
-  return `${signal.contact.firstName} ${signal.contact.lastName} · ${signal.payloadSummary}`;
 }
 
 export async function getRecentSignals(limit = 8): Promise<RecentSignalFeedItemContract[]> {
@@ -151,6 +151,7 @@ export async function getRecentSignals(limit = 8): Promise<RecentSignalFeedItemC
           id: true,
           firstName: true,
           lastName: true,
+          email: true,
         },
       },
       lead: {
@@ -166,8 +167,8 @@ export async function getRecentSignals(limit = 8): Promise<RecentSignalFeedItemC
     signalId: signal.id,
     sourceSystem: signal.sourceSystem,
     eventType: signal.eventType,
-    occurredAtIso: signal.occurredAt.toISOString(),
-    receivedAtIso: signal.receivedAt.toISOString(),
+    occurredAtIso: toIsoTimestamp(signal.occurredAt),
+    receivedAtIso: toIsoTimestamp(signal.receivedAt),
     status: signal.status,
     dedupeKey: signal.dedupeKey,
     matchedEntities: buildMatchedEntities(signal),
@@ -186,14 +187,13 @@ export async function getAccountTimeline(
       accountId,
     },
     take: limit,
-    orderBy: {
-      occurredAt: "desc",
-    },
+    orderBy: [{ occurredAt: "desc" }, { receivedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
       eventType: true,
       sourceSystem: true,
       occurredAt: true,
+      receivedAt: true,
       status: true,
       accountDomain: true,
       contactEmail: true,
@@ -216,16 +216,25 @@ export async function getAccountTimeline(
   return signals.map((signal) => ({
     signalId: signal.id,
     eventType: signal.eventType,
+    eventTypeLabel: formatSignalEventLabel(signal.eventType),
     sourceSystem: signal.sourceSystem,
-    occurredAtIso: signal.occurredAt.toISOString(),
-    matchStatus: signal.status,
-    displayTitle: formatEnumLabel(signal.eventType),
-    displaySubtitle: buildTimelineSubtitle(signal),
+    sourceSystemLabel: formatSignalEventLabel(signal.sourceSystem),
+    occurredAtIso: toIsoTimestamp(signal.occurredAt),
+    receivedAtIso: toIsoTimestamp(signal.receivedAt),
+    status: signal.status,
+    statusLabel: formatSignalEventLabel(signal.status),
+    displayTitle: formatSignalEventLabel(signal.eventType),
+    displaySubtitle: buildTimelineDisplaySubtitle(
+      signal.payloadSummary,
+      signal.contact
+        ? getContactDisplayName(signal.contact.firstName, signal.contact.lastName, signal.contact.email)
+        : null,
+    ),
     normalizedSummary: buildNormalizedSummary(signal),
     associatedContact: signal.contact
       ? {
           id: signal.contact.id,
-          fullName: `${signal.contact.firstName} ${signal.contact.lastName}`,
+          name: getContactDisplayName(signal.contact.firstName, signal.contact.lastName, signal.contact.email),
           email: signal.contact.email,
         }
       : null,
@@ -244,9 +253,7 @@ export async function getUnmatchedSignals(
       ...(sourceSystem ? { sourceSystem } : {}),
       ...(filters.eventType ? { eventType: filters.eventType } : {}),
     },
-    orderBy: {
-      occurredAt: "desc",
-    },
+    orderBy: [{ occurredAt: "desc" }, { receivedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
       sourceSystem: true,
@@ -254,6 +261,7 @@ export async function getUnmatchedSignals(
       occurredAt: true,
       receivedAt: true,
       createdAt: true,
+      status: true,
       accountDomain: true,
       contactEmail: true,
       eventCategory: true,
@@ -266,18 +274,38 @@ export async function getUnmatchedSignals(
   });
 
   return unmatchedSignals
-    .map((signal) => ({
-      signalId: signal.id,
-      sourceSystem: signal.sourceSystem,
-      eventType: signal.eventType,
-      occurredAtIso: signal.occurredAt.toISOString(),
-      accountDomainCandidate: signal.accountDomain,
-      contactEmailCandidate: signal.contactEmail,
-      reasonCodes: parseReasonCodes(signal.identityResolutionCodesJson),
-      normalizedSummary: buildNormalizedSummary(signal),
-      createdAtIso: signal.createdAt.toISOString(),
-      receivedAtIso: signal.receivedAt.toISOString(),
-    }))
+    .map((signal) => {
+      const reasonCodes = parseReasonCodes(signal.identityResolutionCodesJson);
+      const reasonDetails = getSignalReasonDetails(reasonCodes);
+      const primaryReason = getPrimarySignalReason(reasonCodes);
+
+      return {
+        signalId: signal.id,
+        status: signal.status,
+        sourceSystem: signal.sourceSystem,
+        sourceSystemLabel: formatSignalEventLabel(signal.sourceSystem),
+        eventType: signal.eventType,
+        eventTypeLabel: formatSignalEventLabel(signal.eventType),
+        occurredAtIso: toIsoTimestamp(signal.occurredAt),
+        receivedAtIso: toIsoTimestamp(signal.receivedAt),
+        createdAtIso: toIsoTimestamp(signal.createdAt),
+        displayTitle: formatSignalEventLabel(signal.eventType),
+        displaySubtitle: buildUnmatchedDisplaySubtitle(
+          signal.payloadSummary,
+          signal.accountDomain,
+          signal.contactEmail,
+        ),
+        accountDomainCandidate: signal.accountDomain,
+        accountDomainDisplay: getAccountDomainDisplay(signal.accountDomain),
+        contactEmailCandidate: signal.contactEmail,
+        contactEmailDisplay: getContactEmailDisplay(signal.contactEmail),
+        reasonCodes,
+        reasonDetails,
+        primaryReason,
+        recommendedQueue: getRecommendedQueue(reasonCodes),
+        normalizedSummary: buildNormalizedSummary(signal),
+      };
+    })
     .filter((signal) => {
       if (!filters.reasonCode) {
         return true;
@@ -321,6 +349,7 @@ export async function getSignalById(id: string): Promise<SignalDetailContract | 
           id: true,
           firstName: true,
           lastName: true,
+          email: true,
         },
       },
       lead: {
@@ -375,9 +404,9 @@ export async function getSignalById(id: string): Promise<SignalDetailContract | 
     dedupeKey: signal.dedupeKey,
     accountDomain: signal.accountDomain,
     contactEmail: signal.contactEmail,
-    occurredAtIso: signal.occurredAt.toISOString(),
-    receivedAtIso: signal.receivedAt.toISOString(),
-    createdAtIso: signal.createdAt.toISOString(),
+    occurredAtIso: toIsoTimestamp(signal.occurredAt),
+    receivedAtIso: toIsoTimestamp(signal.receivedAt),
+    createdAtIso: toIsoTimestamp(signal.createdAt),
     errorMessage: signal.errorMessage,
     reasonCodes: parseReasonCodes(signal.identityResolutionCodesJson),
     matchedEntities: buildMatchedEntities(signal),

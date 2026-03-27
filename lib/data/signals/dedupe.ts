@@ -3,12 +3,22 @@ import type { JsonRecord } from "@/lib/contracts/signals";
 import type { NormalizedSignalEnvelope } from "./normalize";
 import { hashStableValue } from "./shared";
 
+export type SignalDedupeBasis = {
+  sourceSystem: string;
+  eventType: NormalizedSignalEnvelope["eventType"];
+  accountDomain: string | null;
+  contactEmail: string | null;
+  occurredAtIso: string;
+  rawReference: NormalizedSignalEnvelope["normalizedPayload"]["rawReference"];
+  payloadFingerprint: string | null;
+};
+
 function getPayloadFingerprint(payload: JsonRecord) {
   return hashStableValue(payload);
 }
 
-export function computeSignalDedupeKey(normalizedSignal: NormalizedSignalEnvelope) {
-  const dedupeBasis = {
+export function buildSignalDedupeBasis(normalizedSignal: NormalizedSignalEnvelope): SignalDedupeBasis {
+  return {
     sourceSystem: normalizedSignal.sourceSystem,
     eventType: normalizedSignal.eventType,
     accountDomain: normalizedSignal.accountDomain,
@@ -20,6 +30,8 @@ export function computeSignalDedupeKey(normalizedSignal: NormalizedSignalEnvelop
         ? null
         : getPayloadFingerprint(normalizedSignal.rawPayload.payload as JsonRecord),
   };
+}
 
-  return hashStableValue(dedupeBasis);
+export function computeSignalDedupeKey(normalizedSignal: NormalizedSignalEnvelope) {
+  return hashStableValue(buildSignalDedupeBasis(normalizedSignal));
 }

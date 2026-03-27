@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
+import type {
+  PublicIngestSignalResponseContract,
+  PublicSignalApiErrorCode,
+  PublicSignalApiErrorResponseContract,
+} from "@/lib/contracts/signals";
 import { ingestSignal } from "@/lib/data/signals";
 
 export const runtime = "nodejs";
@@ -17,29 +22,55 @@ function getErrorMessage(error: unknown) {
   return "Unexpected signal ingest error.";
 }
 
+function createErrorResponse(
+  code: PublicSignalApiErrorCode,
+  message: string,
+  error: string | null,
+  status: number,
+) {
+  const payload: PublicSignalApiErrorResponseContract = {
+    code,
+    message,
+    error,
+  };
+
+  return NextResponse.json(payload, { status });
+}
+
+function serializeIngestSignalResponse(
+  result: Awaited<ReturnType<typeof ingestSignal>>,
+): PublicIngestSignalResponseContract {
+  return {
+    signalId: result.signalId,
+    created: result.created,
+    status: result.status,
+    outcome: result.outcome,
+    matchedEntities: result.matchedEntities,
+    reasonCodes: result.reasonCodes,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const result = await ingestSignal(body);
     const status = result.outcome === "duplicate" ? 200 : 201;
-    return NextResponse.json(result, { status });
+    return NextResponse.json(serializeIngestSignalResponse(result), { status });
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        {
-          message: "Signal payload validation failed.",
-          error: getErrorMessage(error),
-        },
-        { status: 400 },
+    if (error instanceof ZodError || error instanceof SyntaxError) {
+      return createErrorResponse(
+        "SIGNAL_VALIDATION_ERROR",
+        "Signal payload validation failed.",
+        getErrorMessage(error),
+        400,
       );
     }
 
-    return NextResponse.json(
-      {
-        message: "Signal ingest failed.",
-        error: getErrorMessage(error),
-      },
-      { status: 500 },
+    return createErrorResponse(
+      "SIGNAL_INTERNAL_ERROR",
+      "Signal ingest failed.",
+      getErrorMessage(error),
+      500,
     );
   }
 }

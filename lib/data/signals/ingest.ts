@@ -21,6 +21,7 @@ import {
 
 import { computeSignalDedupeKey } from "./dedupe";
 import { normalizeSignal } from "./normalize";
+import { getContactDisplayName } from "./presentation";
 
 function buildMatchedEntities(
   resolution: Awaited<ReturnType<typeof resolveSignalIdentity>>,
@@ -35,7 +36,11 @@ function buildMatchedEntities(
     contact: resolution.contact
       ? {
           id: resolution.contact.id,
-          name: `${resolution.contact.firstName} ${resolution.contact.lastName}`,
+          name: getContactDisplayName(
+            resolution.contact.firstName,
+            resolution.contact.lastName,
+            resolution.contact.email,
+          ),
         }
       : null,
     lead: null,

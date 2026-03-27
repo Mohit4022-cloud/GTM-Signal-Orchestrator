@@ -109,12 +109,32 @@ async function main() {
     accountTimeline.some((item) => item.signalId === matchedResult.signalId),
     "Expected newly ingested signal in Northstar timeline.",
   );
+  invariant(
+    accountTimeline.every(
+      (item) =>
+        item.eventTypeLabel.length > 0 &&
+        item.sourceSystemLabel.length > 0 &&
+        item.statusLabel.length > 0 &&
+        item.receivedAtIso.length > 0,
+    ),
+    "Expected stable timeline labels and received timestamps.",
+  );
 
   const unmatchedSignals = await getUnmatchedSignals({ limit: 25 });
   invariant(unmatchedSignals.length >= 10, "Expected unmatched queue rows after seed plus verification inserts.");
   invariant(
     unmatchedSignals.some((item) => item.signalId === unmatchedResult.signalId),
     "Expected unmatched verification signal in queue.",
+  );
+  invariant(
+    unmatchedSignals.every(
+      (item) =>
+        item.reasonDetails.length > 0 &&
+        item.primaryReason.recommendedQueue === item.recommendedQueue &&
+        item.displayTitle.length > 0 &&
+        item.displaySubtitle.length > 0,
+    ),
+    "Expected display-safe unmatched queue reason metadata.",
   );
 
   const signalDetail = await getSignalById(matchedResult.signalId);

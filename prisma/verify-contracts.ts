@@ -118,6 +118,16 @@ async function main() {
     unmatchedSignals.every((signal) => signal.reasonCodes.length > 0),
     "Unmatched queue items must include machine-readable reason codes.",
   );
+  invariant(
+    unmatchedSignals.every(
+      (signal) =>
+        signal.reasonDetails.length > 0 &&
+        signal.primaryReason.recommendedQueue === signal.recommendedQueue &&
+        signal.accountDomainDisplay.length > 0 &&
+        signal.contactEmailDisplay.length > 0,
+    ),
+    "Unmatched queue items must include display-safe reason metadata and identity candidate labels.",
+  );
 
   invariant(allAccounts.rows.length === 20, `Expected 20 accounts, found ${allAccounts.rows.length}.`);
   invariant(
@@ -155,13 +165,29 @@ async function main() {
       if (index === 0) {
         return true;
       }
-      return new Date(array[index - 1]!.occurredAtIso).getTime() >= new Date(item.occurredAtIso).getTime();
+      const previous = array[index - 1]!;
+      const previousOccurredAt = new Date(previous.occurredAtIso).getTime();
+      const currentOccurredAt = new Date(item.occurredAtIso).getTime();
+
+      if (previousOccurredAt !== currentOccurredAt) {
+        return previousOccurredAt >= currentOccurredAt;
+      }
+
+      return new Date(previous.receivedAtIso).getTime() >= new Date(item.receivedAtIso).getTime();
     }),
-    "Account timeline is not ordered by occurredAt descending.",
+    "Account timeline is not ordered by occurredAt descending with receivedAt tiebreaks.",
   );
   invariant(
-    accountTimeline.every((item) => item.displayTitle.length > 0 && item.displaySubtitle.length > 0),
-    "Account timeline items must include display title and subtitle.",
+    accountTimeline.every(
+      (item) =>
+        item.displayTitle.length > 0 &&
+        item.displaySubtitle.length > 0 &&
+        item.eventTypeLabel.length > 0 &&
+        item.sourceSystemLabel.length > 0 &&
+        item.statusLabel.length > 0 &&
+        item.receivedAtIso.length > 0,
+    ),
+    "Account timeline items must include stable labels and received timestamps.",
   );
 
   const signalDetail = await getSignalById(unmatchedSignals[0]!.signalId);

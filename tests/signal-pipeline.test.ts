@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import { SignalStatus } from "@prisma/client";
 
+import { buildSignalDedupeBasis, computeSignalDedupeKey } from "@/lib/data/signals/dedupe";
 import {
   getAccountTimeline,
   getSignalById,
@@ -11,7 +12,9 @@ import {
   ingestSignal,
   uploadSignalsCsv,
 } from "@/lib/data/signals";
+import { normalizeSignal } from "@/lib/data/signals/normalize";
 import { db } from "@/lib/db";
+import { parseSignalInput } from "@/lib/validation/signals";
 
 import { resetDatabase } from "./helpers/db";
 
@@ -114,6 +117,57 @@ test("ingestSignal skips duplicates deterministically", async () => {
   assert.equal(second.signalId, first.signalId);
 });
 
+test("dedupe basis is explicit and deterministic", () => {
+  const input = {
+    source_system: "website",
+    event_type: "website_visit" as const,
+    account_domain: "northstaranalytics.com",
+    contact_email: "avery.bennett@northstaranalytics.com",
+    occurred_at: "2026-03-27T08:00:00.000Z",
+    received_at: "2026-03-27T08:02:00.000Z",
+    payload: {
+      page: "/integrations/salesforce",
+      session_id: "test_duplicate_visit_2",
+      visit_count: 1,
+    },
+  };
+  const normalized = normalizeSignal(parseSignalInput(input));
+  const dedupeBasis = buildSignalDedupeBasis(normalized);
+
+  assert.deepEqual(dedupeBasis, {
+    sourceSystem: "website",
+    eventType: "WEBSITE_VISIT",
+    accountDomain: "northstaranalytics.com",
+    contactEmail: "avery.bennett@northstaranalytics.com",
+    occurredAtIso: "2026-03-27T08:00:00.000Z",
+    rawReference: {
+      page: "/integrations/salesforce",
+      session_id: "test_duplicate_visit_2",
+      visit_count: "1",
+    },
+    payloadFingerprint: null,
+  });
+  assert.equal(computeSignalDedupeKey(normalized), computeSignalDedupeKey(normalized));
+});
+
+test("ingestSignal rejects received_at earlier than occurred_at", async () => {
+  await assert.rejects(
+    () =>
+      ingestSignal({
+        source_system: "website",
+        event_type: "website_visit",
+        account_domain: "northstaranalytics.com",
+        occurred_at: "2026-03-27T10:00:00.000Z",
+        received_at: "2026-03-27T09:59:00.000Z",
+        payload: {
+          page: "/security",
+          session_id: "invalid_received_before_occurred",
+        },
+      }),
+    /received_at must be greater than or equal to occurred_at/,
+  );
+});
+
 test("uploadSignalsCsv returns mixed row outcomes without failing the batch", async () => {
   const csvFixture = await readFile(new URL("./fixtures/signals-upload.csv", import.meta.url), "utf8");
   const result = await uploadSignalsCsv({
@@ -132,14 +186,83 @@ test("uploadSignalsCsv returns mixed row outcomes without failing the batch", as
 test("query contracts expose timeline, unmatched queue, and signal detail", async () => {
   const unmatched = await getUnmatchedSignals({ limit: 25 });
   assert.ok(unmatched.length >= 10);
+  assert.ok(unmatched[0]!.reasonDetails.length > 0);
+  assert.equal(unmatched[0]!.primaryReason.recommendedQueue, unmatched[0]!.recommendedQueue);
+  assert.ok(unmatched[0]!.displayTitle.length > 0);
+  assert.ok(unmatched[0]!.displaySubtitle.length > 0);
+  assert.ok(unmatched[0]!.accountDomainDisplay.length > 0);
+  assert.ok(unmatched[0]!.contactEmailDisplay.length > 0);
 
   const timeline = await getAccountTimeline("acc_northstar_analytics", { limit: 10 });
   assert.ok(timeline.length > 0);
   assert.ok(timeline[0]!.displayTitle.length > 0);
   assert.ok(timeline[0]!.displaySubtitle.length > 0);
+  assert.ok(timeline[0]!.eventTypeLabel.length > 0);
+  assert.ok(timeline[0]!.sourceSystemLabel.length > 0);
+  assert.ok(timeline[0]!.statusLabel.length > 0);
+  assert.ok(timeline[0]!.receivedAtIso.length > 0);
 
   const detail = await getSignalById(timeline[0]!.signalId);
   assert.ok(detail);
   assert.ok(detail.auditTrail.length >= 3);
   assert.ok(detail.normalizedSummary.payloadSummary.length > 0);
+});
+
+test("getAccountTimeline uses deterministic ordering and contact display fallbacks", async () => {
+  const contact = await db.contact.findFirstOrThrow({
+    where: {
+      accountId: "acc_northstar_analytics",
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  await db.contact.update({
+    where: {
+      id: contact.id,
+    },
+    data: {
+      firstName: "",
+      lastName: "",
+    },
+  });
+
+  const firstResult = await ingestSignal({
+    source_system: "website",
+    event_type: "website_visit",
+    account_domain: "northstaranalytics.com",
+    contact_email: contact.email,
+    occurred_at: "2026-03-27T23:00:00.000Z",
+    received_at: "2026-03-27T23:01:00.000Z",
+    payload: {
+      page: "/compare",
+      session_id: "timeline_same_occurred_1",
+      visit_count: 1,
+    },
+  });
+  const secondResult = await ingestSignal({
+    source_system: "website",
+    event_type: "website_visit",
+    account_domain: "northstaranalytics.com",
+    contact_email: contact.email,
+    occurred_at: "2026-03-27T23:00:00.000Z",
+    received_at: "2026-03-27T23:05:00.000Z",
+    payload: {
+      page: "/pricing",
+      session_id: "timeline_same_occurred_2",
+      visit_count: 2,
+    },
+  });
+
+  const timeline = await getAccountTimeline("acc_northstar_analytics", { limit: 5 });
+  const first = timeline.find((item) => item.signalId === firstResult.signalId);
+  const second = timeline.find((item) => item.signalId === secondResult.signalId);
+
+  assert.ok(first);
+  assert.ok(second);
+  assert.equal(timeline[0]!.signalId, secondResult.signalId);
+  assert.equal(timeline[1]!.signalId, firstResult.signalId);
+  assert.equal(second.associatedContact?.name, contact.email);
+  assert.equal(second.displaySubtitle.includes(contact.email), true);
 });

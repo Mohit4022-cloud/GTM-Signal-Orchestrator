@@ -38,6 +38,10 @@ test("POST /api/signals returns 201 for a new matched signal", async () => {
   assert.equal(response.status, 201);
   assert.equal(payload.outcome, "matched");
   assert.equal(payload.created, true);
+  assert.ok(Array.isArray(payload.reasonCodes));
+  assert.equal("dedupe" in payload, false);
+  assert.equal("normalizedEvent" in payload, false);
+  assert.equal("errorMessage" in payload, false);
 });
 
 test("POST /api/signals returns 200 for a duplicate signal", async () => {
@@ -78,6 +82,8 @@ test("POST /api/signals returns 200 for a duplicate signal", async () => {
   assert.equal(duplicateResponse.status, 200);
   assert.equal(payload.outcome, "duplicate");
   assert.equal(payload.created, false);
+  assert.equal("dedupe" in payload, false);
+  assert.equal("normalizedEvent" in payload, false);
 });
 
 test("POST /api/signals returns 400 for validation errors", async () => {
@@ -95,7 +101,38 @@ test("POST /api/signals returns 400 for validation errors", async () => {
     }),
   );
 
+  const payload = await response.json();
   assert.equal(response.status, 400);
+  assert.equal(payload.code, "SIGNAL_VALIDATION_ERROR");
+  assert.match(payload.message, /validation failed/i);
+  assert.equal(typeof payload.error, "string");
+});
+
+test("POST /api/signals returns 400 for chronological validation errors", async () => {
+  const response = await ingestPost(
+    new Request("http://localhost/api/signals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        source_system: "website",
+        event_type: "website_visit",
+        account_domain: "northstaranalytics.com",
+        occurred_at: "2026-03-27T10:00:00.000Z",
+        received_at: "2026-03-27T09:59:00.000Z",
+        payload: {
+          page: "/security",
+          session_id: "api_invalid_chronology_1",
+        },
+      }),
+    }),
+  );
+
+  const payload = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(payload.code, "SIGNAL_VALIDATION_ERROR");
+  assert.match(payload.error, /received_at must be greater than or equal to occurred_at/);
 });
 
 test("POST /api/signals/upload returns batch summary counts", async () => {
@@ -121,6 +158,7 @@ test("POST /api/signals/upload returns batch summary counts", async () => {
   assert.equal(payload.duplicates, 1);
   assert.equal(payload.unmatched, 1);
   assert.equal(payload.errors, 0);
+  assert.equal("code" in payload, false);
 });
 
 test("POST /api/signals/upload returns row errors without failing the batch", async () => {
@@ -157,5 +195,8 @@ test("POST /api/signals/upload returns 400 when the file is missing", async () =
     }),
   );
 
+  const payload = await response.json();
   assert.equal(response.status, 400);
+  assert.equal(payload.code, "UPLOAD_FILE_REQUIRED");
+  assert.equal(payload.error, null);
 });

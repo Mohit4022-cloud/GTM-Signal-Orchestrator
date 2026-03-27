@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Segment {
+  SMB
+  MID_MARKET
+  ENTERPRISE
+  STRATEGIC
+}
+
+enum Geography {
+  NA_EAST
+  NA_WEST
+  EMEA
+  APAC
+}
+
+enum AccountTier {
+  TIER_3
+  TIER_2
+  TIER_1
+  STRATEGIC
+}
+
+enum LifecycleStage {
+  PROSPECT
+  ENGAGED
+  SALES_READY
+  CUSTOMER
+  NURTURE
+}
+
+enum AccountStatus {
+  HEALTHY
+  WATCH
+  HOT
+  AT_RISK
+}
+
+enum LeadStatus {
+  NEW
+  WORKING
+  QUALIFIED
+  NURTURING
+  DISQUALIFIED
+}
+
+enum Temperature {
+  COLD
+  WARM
+  HOT
+  URGENT
+}
+
+enum SignalType {
+  WEBSITE_VISIT
+  PRICING_PAGE_VISIT
+  HIGH_INTENT_CLUSTER
+  FORM_FILL
+  WEBINAR_REGISTRATION
+  PRODUCT_SIGNUP
+  PRODUCT_USAGE_MILESTONE
+  EMAIL_REPLY
+  MEETING_BOOKED
+  MEETING_NO_SHOW
+  THIRD_PARTY_INTENT
+  MANUAL_SALES_NOTE
+  ACCOUNT_STATUS_UPDATE
+}
+
+enum SignalStatus {
+  MATCHED
+  UNMATCHED
+  PROCESSED
+}
+
+enum ScoreEntityType {
+  ACCOUNT
+  LEAD
+}
+
+enum ScoreComponent {
+  FIT
+  INTENT
+  ENGAGEMENT
+  RECENCY
+  PRODUCT_USAGE
+  MANUAL_PRIORITY
+}
+
+enum RoutingReason {
+  NAMED_ACCOUNT
+  TERRITORY_SEGMENT
+  ROUND_ROBIN
+  STRATEGIC_ESCALATION
+  OPS_REVIEW
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskType {
+  CALL
+  EMAIL
+  RESEARCH
+  HANDOFF
+  REVIEW
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AuditEventType {
+  SIGNAL_INGESTED
+  IDENTITY_RESOLVED
+  SCORE_UPDATED
+  ROUTE_ASSIGNED
+  TASK_CREATED
+  SLA_BREACHED
+  USER_OVERRIDE
+  RULE_CONFIG_CHANGED
+}
+
+model User {
+  id                 String            @id
+  name               String
+  email              String            @unique
+  role               String
+  team               String
+  geography          Geography
+  title              String?
+  avatarColor        String?
+  ownedAccounts      Account[]         @relation("NamedOwner")
+  assignedLeads      Lead[]            @relation("LeadOwner")
+  ownedTasks         Task[]            @relation("TaskOwner")
+  routingAssignments RoutingDecision[] @relation("RoutingOwner")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+model Account {
+  id                String            @id
+  name              String
+  domain            String            @unique
+  segment           Segment
+  industry          String
+  geography         Geography
+  employeeCount     Int
+  annualRevenueBand String
+  namedOwnerId      String?
+  accountTier       AccountTier
+  lifecycleStage    LifecycleStage
+  fitScore          Int
+  overallScore      Int
+  status            AccountStatus
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  namedOwner        User?             @relation("NamedOwner", fields: [namedOwnerId], references: [id])
+  contacts          Contact[]
+  leads             Lead[]
+  signals           SignalEvent[]
+  tasks             Task[]
+  routingDecisions  RoutingDecision[]
+  auditLogs         AuditLog[]
+  scoreHistory      ScoreHistory[]
+
+  @@index([segment, geography])
+  @@index([overallScore])
+  @@index([namedOwnerId])
+}
+
+model Contact {
+  id         String       @id
+  accountId  String
+  firstName  String
+  lastName   String
+  email      String       @unique
+  title      String
+  department String
+  seniority  String
+  phone      String?
+  personaType String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  account    Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  leads      Lead[]
+  signals    SignalEvent[]
+
+  @@index([accountId])
+}
+
+model Lead {
+  id             String             @id
+  accountId      String
+  contactId      String?
+  source         String
+  inboundType    String
+  currentOwnerId String?
+  status         LeadStatus
+  score          Int
+  temperature    Temperature
+  slaDeadlineAt  DateTime?
+  firstResponseAt DateTime?
+  routedAt       DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact        Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  currentOwner   User?              @relation("LeadOwner", fields: [currentOwnerId], references: [id], onDelete: SetNull)
+  signals        SignalEvent[]
+  routingDecisions RoutingDecision[]
+  tasks          Task[]
+  scoreHistory   ScoreHistory[]
+  auditLogs      AuditLog[]
+
+  @@index([accountId])
+  @@index([currentOwnerId])
+  @@index([status, temperature])
+}
+
+model SignalEvent {
+  id                    String       @id
+  sourceSystem          String
+  eventType             SignalType
+  accountId             String?
+  contactId             String?
+  leadId                String?
+  rawPayloadJson        Json
+  normalizedPayloadJson Json
+  occurredAt            DateTime
+  receivedAt            DateTime
+  dedupeKey             String?      @unique
+  status                SignalStatus
+  account               Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contact               Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lead                  Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([leadId])
+  @@index([status, occurredAt])
+}
+
+model ScoreHistory {
+  id             String          @id
+  entityType     ScoreEntityType
+  entityId       String
+  accountId      String?
+  leadId         String?
+  previousScore  Int
+  newScore       Int
+  delta          Int
+  scoreComponent ScoreComponent
+  reasonCode     String
+  createdAt      DateTime        @default(now())
+  account        Account?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model RoutingDecision {
+  id              String        @id
+  leadId          String?
+  accountId       String?
+  policyVersion   String
+  decisionType    RoutingReason
+  assignedOwnerId String?
+  assignedTeam    String
+  assignedQueue   String
+  explanation     String
+  createdAt       DateTime      @default(now())
+  lead            Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  account         Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  assignedOwner   User?         @relation("RoutingOwner", fields: [assignedOwnerId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([leadId])
+  @@index([assignedOwnerId])
+}
+
+model Task {
+  id          String       @id
+  leadId      String?
+  accountId   String?
+  ownerId     String?
+  taskType    TaskType
+  priority    TaskPriority
+  dueAt       DateTime
+  status      TaskStatus
+  title       String
+  description String
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  account     Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  owner       User?        @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([leadId])
+  @@index([ownerId])
+  @@index([status, dueAt])
+}
+
+model AuditLog {
+  id          String         @id
+  eventType   AuditEventType
+  actorType   String
+  actorName   String
+  entityType  String
+  entityId    String
+  accountId   String?
+  leadId      String?
+  beforeState Json?
+  afterState  Json?
+  explanation String
+  createdAt   DateTime       @default(now())
+  account     Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  lead        Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model RuleConfig {
+  id         String   @id
+  ruleType   String
+  version    String
+  isActive   Boolean  @default(false)
+  configJson Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([ruleType, isActive])
+}

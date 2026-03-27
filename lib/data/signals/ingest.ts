@@ -18,6 +18,7 @@ import {
   recordSignalNormalized,
   recordSignalUnmatchedQueued,
 } from "@/lib/audit/signals";
+import { routeActiveLeadsForSignalWithClient } from "@/lib/routing";
 import { recomputeScoresForSignalWithClient } from "@/lib/scoring/service";
 
 import { computeSignalDedupeKey } from "./dedupe";
@@ -161,6 +162,7 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
             eventType: normalizedSignal.eventType,
           },
         });
+        await routeActiveLeadsForSignalWithClient(tx, signalId);
         return;
       }
 

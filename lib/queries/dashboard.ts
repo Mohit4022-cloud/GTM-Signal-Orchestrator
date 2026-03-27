@@ -15,15 +15,15 @@ import {
 import { getRecommendedQueue } from "@/lib/data/signals/presentation";
 import { db } from "@/lib/db";
 import { formatCompactNumber, formatEnumLabel, formatRelativeTime } from "@/lib/formatters/display";
+import { summarizeRoutingExplanation } from "@/lib/routing/explanation";
+import { getRecentRoutingDecisions } from "@/lib/routing/service";
 import type { ModulePlaceholderConfig } from "@/lib/types";
 
 function getRoutingExplanationSummary(value: unknown) {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return "Routing explanation unavailable.";
   }
-
-  const summary = (value as { summary?: unknown }).summary;
-  return typeof summary === "string" ? summary : "Routing explanation unavailable.";
+  return summarizeRoutingExplanation(value as Parameters<typeof summarizeRoutingExplanation>[0]);
 }
 
 function getRelativeLabel(value: Date | null | undefined) {
@@ -270,38 +270,31 @@ export async function getRecentSignals(): Promise<RecentSignalContract[]> {
 }
 
 async function getRecentRoutingFeed(): Promise<RoutingFeedItem[]> {
-  const routingDecisions = await db.routingDecision.findMany({
-    take: 6,
-    orderBy: {
-      createdAt: "desc",
+  const routingDecisions = await getRecentRoutingDecisions(6);
+  const accountIds = routingDecisions
+    .map((decision) => decision.accountId)
+    .filter((accountId): accountId is string => Boolean(accountId));
+  const accounts = await db.account.findMany({
+    where: {
+      id: {
+        in: accountIds,
+      },
     },
     select: {
       id: true,
-      decisionType: true,
-      assignedQueue: true,
-      explanationJson: true,
-      createdAt: true,
-      account: {
-        select: {
-          name: true,
-        },
-      },
-      assignedOwner: {
-        select: {
-          name: true,
-        },
-      },
+      name: true,
     },
   });
+  const accountNames = new Map(accounts.map((account) => [account.id, account.name]));
 
   return routingDecisions.map((decision) => ({
     id: decision.id,
-    accountName: decision.account?.name ?? "Unmatched account",
+    accountName: decision.accountId ? accountNames.get(decision.accountId) ?? "Unknown account" : "Unmatched account",
     ownerName: decision.assignedOwner?.name ?? "Ops review",
     queue: decision.assignedQueue,
     decisionType: formatEnumLabel(decision.decisionType),
-    createdAt: formatRelativeTime(decision.createdAt),
-    explanation: getRoutingExplanationSummary(decision.explanationJson),
+    createdAt: formatRelativeTime(decision.createdAtIso),
+    explanation: getRoutingExplanationSummary(decision.explanation),
   }));
 }
 

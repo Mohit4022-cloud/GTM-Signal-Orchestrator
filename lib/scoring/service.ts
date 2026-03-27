@@ -29,6 +29,7 @@ import {
   computeLeadScore,
   getActiveScoringConfig,
 } from "@/lib/scoring";
+import { routeActiveLeadsForSignalWithClient } from "@/lib/routing";
 
 type ScoringClient = Prisma.TransactionClient | PrismaClient;
 
@@ -576,7 +577,7 @@ export async function attachSignalToEntities(
       },
     });
 
-    return recomputeScoresForSignalWithClient(tx, signalId, {
+    const recomputeResult = await recomputeScoresForSignalWithClient(tx, signalId, {
       type: ScoreTriggerType.SIGNAL_ATTACHED,
       signalId,
       actorType: params.actorType,
@@ -588,6 +589,8 @@ export async function attachSignalToEntities(
         leadId: params.leadId ?? null,
       },
     });
+    await routeActiveLeadsForSignalWithClient(tx, signalId);
+    return recomputeResult;
   });
 }
 

@@ -1,8 +1,10 @@
 import {
   Geography,
   LifecycleStage,
+  ScoreEntityType,
   Segment,
   TaskStatus,
+  Temperature,
   type Prisma,
 } from "@prisma/client";
 
@@ -24,6 +26,7 @@ import {
   formatRelativeTime,
   getScoreBucket,
 } from "@/lib/formatters/display";
+import { getAccountScoreBreakdown, getScoreHistoryForEntity } from "@/lib/scoring";
 
 const SEGMENTS = Object.values(Segment);
 const GEOGRAPHIES = Object.values(Geography);
@@ -36,6 +39,7 @@ const ACCOUNT_OWNER_ROLES = [
   "SDR Manager",
 ] as const;
 const SCORE_BUCKET_OPTIONS: SelectOption[] = [
+  { value: "urgent", label: "Urgent" },
   { value: "hot", label: "Hot" },
   { value: "warm", label: "Warm" },
   { value: "cold", label: "Cold" },
@@ -92,12 +96,14 @@ function buildWhere(filters: AccountsFilterState): Prisma.AccountWhereInput {
     where.namedOwnerId = filters.owner;
   }
 
-  if (filters.scoreBucket === "hot") {
-    where.overallScore = { gte: 80 };
+  if (filters.scoreBucket === "urgent") {
+    where.temperature = Temperature.URGENT;
+  } else if (filters.scoreBucket === "hot") {
+    where.temperature = Temperature.HOT;
   } else if (filters.scoreBucket === "warm") {
-    where.overallScore = { gte: 65, lt: 80 };
+    where.temperature = Temperature.WARM;
   } else if (filters.scoreBucket === "cold") {
-    where.overallScore = { lt: 65 };
+    where.temperature = Temperature.COLD;
   }
 
   return where;
@@ -146,7 +152,10 @@ export async function getAccounts(
         geography: true,
         lifecycleStage: true,
         overallScore: true,
+        temperature: true,
         status: true,
+        scoringVersion: true,
+        scoreLastComputedAt: true,
         namedOwnerId: true,
         namedOwner: {
           select: {
@@ -193,8 +202,12 @@ export async function getAccounts(
     stage: account.lifecycleStage,
     stageLabel: formatEnumLabel(account.lifecycleStage),
     score: account.overallScore,
+    temperature: account.temperature,
+    temperatureLabel: formatEnumLabel(account.temperature),
     status: account.status,
     statusLabel: formatEnumLabel(account.status),
+    scoringVersion: account.scoringVersion,
+    scoreLastComputedAtIso: account.scoreLastComputedAt?.toISOString() ?? null,
     lastSignalAtIso: account.signals[0]?.occurredAt.toISOString() ?? null,
     lastSignalAtLabel: getRelativeLabel(account.signals[0]?.occurredAt),
   }));
@@ -208,7 +221,9 @@ export async function getAccounts(
     stats: {
       totalAccounts: rows.length,
       averageScore,
-      hotAccounts: rows.filter((row) => row.score >= 80).length,
+      hotAccounts: rows.filter(
+        (row) => row.temperature === Temperature.HOT || row.temperature === Temperature.URGENT,
+      ).length,
       strategicAccounts: rows.filter((row) => row.segment === Segment.STRATEGIC).length,
     },
     options: {
@@ -232,7 +247,7 @@ export async function getAccounts(
 
 export async function getAccountById(id: string): Promise<AccountDetailContract | null> {
   const now = new Date();
-  const [account, timeline] = await Promise.all([
+  const [account, timeline, score, scoreHistory] = await Promise.all([
     db.account.findUnique({
       where: { id },
       select: {
@@ -245,10 +260,13 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
         status: true,
         overallScore: true,
         fitScore: true,
+        temperature: true,
         industry: true,
         accountTier: true,
         employeeCount: true,
         annualRevenueBand: true,
+        scoreLastComputedAt: true,
+        scoringVersion: true,
         namedOwner: {
           select: {
             id: true,
@@ -286,6 +304,9 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
             status: true,
             temperature: true,
             score: true,
+            fitScore: true,
+            scoringVersion: true,
+            scoreLastComputedAt: true,
             slaDeadlineAt: true,
             firstResponseAt: true,
             routedAt: true,
@@ -330,18 +351,6 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
             },
           },
         },
-        scoreHistory: {
-          take: 6,
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            id: true,
-            scoreComponent: true,
-            delta: true,
-            reasonCode: true,
-          },
-        },
         auditLogs: {
           take: 8,
           orderBy: {
@@ -361,9 +370,11 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       },
     }),
     getAccountTimeline(id, { limit: 8 }),
+    getAccountScoreBreakdown(id),
+    getScoreHistoryForEntity(ScoreEntityType.ACCOUNT, id, { limit: 8 }),
   ]);
 
-  if (!account) {
+  if (!account || !score) {
     return null;
   }
 
@@ -388,6 +399,10 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       annualRevenueBand: account.annualRevenueBand,
       overallScore: account.overallScore,
       fitScore: account.fitScore,
+      temperature: account.temperature,
+      temperatureLabel: formatEnumLabel(account.temperature),
+      scoreLastComputedAtIso: account.scoreLastComputedAt?.toISOString() ?? null,
+      scoringVersion: account.scoringVersion,
     },
     namedOwner: account.namedOwner
       ? {
@@ -421,6 +436,9 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       temperature: lead.temperature,
       temperatureLabel: formatEnumLabel(lead.temperature),
       score: lead.score,
+      fitScore: lead.fitScore,
+      scoringVersion: lead.scoringVersion,
+      scoreLastComputedAtIso: lead.scoreLastComputedAt?.toISOString() ?? null,
       contactId: lead.contactId,
       contactName: lead.contact
         ? getContactDisplayName(lead.contact.firstName, lead.contact.lastName, null)
@@ -472,12 +490,14 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       ownerName: task.owner?.name ?? null,
       isOverdue: task.dueAt.getTime() < now.getTime(),
     })),
-    scoreBreakdown: account.scoreHistory.map((item) => ({
-      id: item.id,
-      scoreComponent: item.scoreComponent,
-      scoreComponentLabel: formatEnumLabel(item.scoreComponent),
-      value: item.delta,
-      reasonCode: item.reasonCode,
+    score,
+    scoreHistory: scoreHistory.rows,
+    scoreBreakdown: score.componentBreakdown.map((component) => ({
+      id: `${account.id}_${component.key}`,
+      scoreComponent: component.key,
+      scoreComponentLabel: component.label,
+      value: component.score,
+      reasonCode: component.reasonCodes[0] ?? "none",
     })),
     auditLog: account.auditLogs.map((entry) => ({
       id: entry.id,
@@ -525,6 +545,7 @@ export async function getAccountsListData(
       segments: data.options.segments,
       geographies: data.options.geographies,
       stages: data.options.stages,
+      scoreBuckets: data.options.scoreBuckets,
     },
   };
 }

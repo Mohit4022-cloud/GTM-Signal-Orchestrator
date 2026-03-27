@@ -80,3 +80,14 @@ export type {
   UploadSignalsCsvInput,
   UploadSignalsCsvResult,
 } from "@/lib/contracts/signals";
+export type {
+  EntityScoreBreakdownContract,
+  ScoreComponentBreakdownContract,
+  ScoreContributorContract,
+  ScoreExplanationContract,
+  ScoreHistoryListContract,
+  ScoreHistoryQueryOptions,
+  ScoreHistoryRowContract,
+  ScoreReasonCode,
+  ScoreRecomputeTriggerContract,
+} from "@/lib/contracts/scoring";

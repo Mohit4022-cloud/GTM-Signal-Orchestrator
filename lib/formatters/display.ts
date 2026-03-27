@@ -28,7 +28,8 @@ export function formatRelativeTime(value: Date | string) {
 }
 
 export function getScoreBucket(score: number) {
-  if (score >= 80) return "Hot";
-  if (score >= 65) return "Warm";
+  if (score >= 75) return "Urgent";
+  if (score >= 50) return "Hot";
+  if (score >= 25) return "Warm";
   return "Cold";
 }

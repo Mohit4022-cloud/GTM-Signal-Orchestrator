@@ -1,3 +1,5 @@
+import type { EntityScoreBreakdownContract, ScoreHistoryRowContract } from "@/lib/contracts/scoring";
+
 export type MetricTone = "default" | "positive" | "warning" | "danger";
 
 export type SelectOption = {
@@ -52,6 +54,10 @@ export type HotAccountContract = {
   status: string;
   statusLabel: string;
   score: number;
+  temperature: string;
+  temperatureLabel: string;
+  scoringVersion: string;
+  scoreLastComputedAtIso: string | null;
   lastSignalAtIso: string | null;
   lastSignalAtLabel: string | null;
 };
@@ -77,7 +83,7 @@ export type RecentSignalContract = {
   recommendedQueue?: string;
 };
 
-export type ScoreBucket = "hot" | "warm" | "cold";
+export type ScoreBucket = "urgent" | "hot" | "warm" | "cold";
 
 export type AccountsFiltersInput = {
   q?: string;
@@ -110,8 +116,12 @@ export type AccountsListRowContract = {
   stage: string;
   stageLabel: string;
   score: number;
+  temperature: string;
+  temperatureLabel: string;
   status: string;
   statusLabel: string;
+  scoringVersion: string;
+  scoreLastComputedAtIso: string | null;
   lastSignalAtIso: string | null;
   lastSignalAtLabel: string | null;
 };
@@ -156,6 +166,10 @@ export type AccountMetadataContract = {
   annualRevenueBand: string;
   overallScore: number;
   fitScore: number;
+  temperature: string;
+  temperatureLabel: string;
+  scoreLastComputedAtIso: string | null;
+  scoringVersion: string;
 };
 
 export type NamedOwnerContract = {
@@ -190,6 +204,9 @@ export type RelatedLeadContract = {
   temperature: string;
   temperatureLabel: string;
   score: number;
+  fitScore: number;
+  scoringVersion: string;
+  scoreLastComputedAtIso: string | null;
   contactId: string | null;
   contactName: string | null;
   currentOwnerId: string | null;
@@ -251,6 +268,8 @@ export type AccountDetailContract = {
   relatedLeads: RelatedLeadContract[];
   recentSignals: AccountTimelineEventContract[];
   openTasks: AccountOpenTaskContract[];
+  score: EntityScoreBreakdownContract;
+  scoreHistory: ScoreHistoryRowContract[];
   scoreBreakdown: ScoreBreakdownItemContract[];
   auditLog: AuditLogItemContract[];
   summary: string;
@@ -316,6 +335,7 @@ export type AccountsListData = {
     segments: SelectOption[];
     geographies: SelectOption[];
     stages: SelectOption[];
+    scoreBuckets: SelectOption[];
   };
 };
 

@@ -1,5 +1,5 @@
 import { differenceInMinutes, format, startOfDay, subDays } from "date-fns";
-import { SignalStatus, TaskStatus } from "@prisma/client";
+import { SignalStatus, TaskStatus, Temperature } from "@prisma/client";
 
 import type {
   DashboardData,
@@ -77,8 +77,8 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
     db.account.count(),
     db.account.count({
       where: {
-        overallScore: {
-          gte: 80,
+        temperature: {
+          in: [Temperature.HOT, Temperature.URGENT],
         },
       },
     }),
@@ -187,8 +187,8 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
 export async function getHotAccounts(): Promise<HotAccountContract[]> {
   const accounts = await db.account.findMany({
     where: {
-      overallScore: {
-        gte: 80,
+      temperature: {
+        in: [Temperature.HOT, Temperature.URGENT],
       },
     },
     select: {
@@ -198,6 +198,9 @@ export async function getHotAccounts(): Promise<HotAccountContract[]> {
       segment: true,
       status: true,
       overallScore: true,
+      temperature: true,
+      scoringVersion: true,
+      scoreLastComputedAt: true,
       namedOwnerId: true,
       namedOwner: {
         select: {
@@ -228,6 +231,10 @@ export async function getHotAccounts(): Promise<HotAccountContract[]> {
       status: account.status,
       statusLabel: formatEnumLabel(account.status),
       score: account.overallScore,
+      temperature: account.temperature,
+      temperatureLabel: formatEnumLabel(account.temperature),
+      scoringVersion: account.scoringVersion,
+      scoreLastComputedAtIso: account.scoreLastComputedAt?.toISOString() ?? null,
       lastSignalAtIso: account.signals[0]?.occurredAt.toISOString() ?? null,
       lastSignalAtLabel: getRelativeLabel(account.signals[0]?.occurredAt),
     }))

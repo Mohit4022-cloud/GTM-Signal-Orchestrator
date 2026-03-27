@@ -91,7 +91,7 @@ export function TimelineItemCard({ event, isLast }: TimelineItemCardProps) {
           aria-hidden="true"
         />
         {!isLast && (
-          <div className="mt-1 w-px flex-1 bg-border" aria-hidden="true" />
+          <div className="mt-0.5 w-px flex-1 bg-border" aria-hidden="true" />
         )}
       </div>
 
@@ -116,7 +116,7 @@ export function TimelineItemCard({ event, isLast }: TimelineItemCardProps) {
         </div>
 
         {/* Row 3: description */}
-        <p className="mt-2 text-sm leading-6 text-foreground">
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {event.description}
         </p>
       </div>

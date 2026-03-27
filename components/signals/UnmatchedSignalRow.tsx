@@ -1,6 +1,6 @@
 import { Badge } from "@/components/shared/Badge";
 import { getSignalReasonTone } from "@/lib/badgeHelpers";
-import { formatRelativeTime } from "@/lib/formatters/display";
+import { formatDateTime, formatRelativeTime } from "@/lib/formatters/display";
 import type { UnmatchedSignalQueueItemContract } from "@/lib/contracts/signals";
 import { cn } from "@/lib/utils";
 import { SignalSourceBadge } from "./SignalSourceBadge";
@@ -22,7 +22,7 @@ function AttributeChip({ label, value, muted = false }: AttributeChipProps) {
       </p>
       <p
         className={cn(
-          "mt-0.5 text-sm font-medium",
+          "mt-0.5 break-all text-sm font-medium",
           muted ? "italic text-muted-foreground" : "text-foreground",
         )}
       >
@@ -64,6 +64,7 @@ export function UnmatchedSignalRow({ signal }: UnmatchedSignalRowProps) {
         </div>
         <time
           dateTime={signal.occurredAtIso}
+          title={formatDateTime(signal.occurredAtIso)}
           className="shrink-0 text-xs text-muted-foreground"
         >
           {relativeTime}

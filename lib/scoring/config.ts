@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type { ScoringConfigContract } from "@/lib/contracts/scoring";
@@ -67,8 +68,10 @@ export function parseScoringConfig(configJson: unknown, version?: string | null)
   };
 }
 
-export async function getActiveScoringConfig() {
-  const configRow = await db.ruleConfig.findFirst({
+type ScoringConfigClient = Prisma.TransactionClient | PrismaClient;
+
+export async function getActiveScoringConfig(client: ScoringConfigClient = db) {
+  const configRow = await client.ruleConfig.findFirst({
     where: {
       ruleType: "scoring",
       isActive: true,

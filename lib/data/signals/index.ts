@@ -1,3 +1,4 @@
+export { attachSignal } from "./attach";
 export { ingestSignal } from "./ingest";
 export {
   getAccountTimeline,

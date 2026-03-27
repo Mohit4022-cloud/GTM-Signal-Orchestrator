@@ -18,6 +18,7 @@ import {
   recordSignalNormalized,
   recordSignalUnmatchedQueued,
 } from "@/lib/audit/signals";
+import { recomputeScoresForSignalWithClient } from "@/lib/scoring/service";
 
 import { computeSignalDedupeKey } from "./dedupe";
 import { normalizeSignal } from "./normalize";
@@ -149,6 +150,16 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
           contactId: identityResolution.contact?.id ?? null,
           explanation: identityResolution.explanation,
           reasonCodes: identityResolution.reasonCodes,
+        });
+
+        await recomputeScoresForSignalWithClient(tx, signalId, {
+          type: "SIGNAL_INGESTED",
+          signalId,
+          effectiveAtIso: normalizedSignal.receivedAt.toISOString(),
+          metadata: {
+            sourceSystem: normalizedSignal.sourceSystem,
+            eventType: normalizedSignal.eventType,
+          },
         });
         return;
       }

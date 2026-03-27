@@ -1,4 +1,4 @@
-import { ShieldAlert } from "lucide-react";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 
 import { UnmatchedSignalRow } from "@/components/signals/UnmatchedSignalRow";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -44,7 +44,7 @@ function QueueErrorState() {
       aria-label="Error loading unmatched signals"
     >
       <span className="rounded-2xl border border-danger/20 bg-danger/10 p-3 text-danger">
-        <ShieldAlert className="size-6" aria-hidden="true" />
+        <AlertTriangle className="size-6" aria-hidden="true" />
       </span>
       <h3 className="mt-4 text-lg font-semibold text-foreground">
         Could not load queue

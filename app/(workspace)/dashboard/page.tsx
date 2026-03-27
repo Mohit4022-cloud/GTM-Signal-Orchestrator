@@ -7,6 +7,7 @@ import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { SectionHeader } from "@/components/shared/SectionHeader";
+import { SignalSourceBadge } from "@/components/signals/SignalSourceBadge";
 import { getSegmentTone } from "@/lib/badgeHelpers";
 import { getDashboardData } from "@/lib/queries/dashboard";
 
@@ -130,13 +131,18 @@ export default async function DashboardPage() {
                   key={signal.id}
                   className="rounded-2xl border border-border bg-panel-muted/70 p-4"
                 >
-                  <p className="font-semibold text-foreground">{signal.eventType}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {signal.sourceSystem} · {signal.receivedAt}
-                  </p>
-                  <p className="mt-3 text-sm text-foreground">
-                    Recommended queue: <span className="font-medium">{signal.recommendation}</span>
-                  </p>
+                  {/* Row 1: title + source chip | timestamp */}
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="font-semibold text-foreground">{signal.eventType}</p>
+                      <SignalSourceBadge source={signal.sourceSystem} />
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">{signal.receivedAt}</span>
+                  </div>
+                  {/* Row 2: recommended queue badge */}
+                  <div className="mt-3">
+                    <Badge tone="accent">{signal.recommendation}</Badge>
+                  </div>
                 </div>
               ))}
             </div>

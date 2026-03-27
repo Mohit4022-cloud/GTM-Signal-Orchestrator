@@ -19,17 +19,16 @@ import { notFound } from "next/navigation";
 
 import { AccountHeader } from "@/components/accounts/AccountHeader";
 import { SectionCard } from "@/components/accounts/SectionCard";
+import { TimelineItemCard } from "@/components/signals/TimelineItemCard";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
 import { getTaskPriorityTone } from "@/lib/badgeHelpers";
-import { cn } from "@/lib/utils";
 import { getAccountDetail } from "@/lib/queries/accounts";
 import type {
   AuditLogItem,
   ContactCard,
   ScoreBreakdownItem,
   TaskListItem,
-  TimelineEvent,
 } from "@/lib/types";
 
 type AccountDetailPageProps = {
@@ -102,7 +101,15 @@ export default async function AccountDetailPage({ params }: AccountDetailPagePro
                 description="No activity has been captured for this account yet."
               />
             ) : (
-              <VerticalTimeline events={account.timeline} />
+              <div className="relative">
+                {account.timeline.map((event, index) => (
+                  <TimelineItemCard
+                    key={event.id}
+                    event={event}
+                    isLast={index === account.timeline.length - 1}
+                  />
+                ))}
+              </div>
             )}
           </SectionCard>
 
@@ -212,48 +219,6 @@ export default async function AccountDetailPage({ params }: AccountDetailPagePro
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
-
-function VerticalTimeline({ events }: { events: TimelineEvent[] }) {
-  return (
-    <div className="relative">
-      {events.map((event, index) => (
-        <div key={event.id} className="relative flex gap-4 pb-6 last:pb-0">
-          {/* Left column: dot + line */}
-          <div className="relative flex flex-col items-center">
-            <div
-              className={cn(
-                "relative z-10 mt-1.5 size-2.5 shrink-0 rounded-full border-2",
-                event.status === "Unmatched"
-                  ? "border-warning bg-warning/20"
-                  : "border-accent bg-accent/20",
-              )}
-            />
-            {index < events.length - 1 && (
-              <div className="mt-1 w-px flex-1 bg-border" />
-            )}
-          </div>
-
-          {/* Right column: content card */}
-          <div className="min-w-0 flex-1 rounded-2xl border border-border bg-panel-muted/70 px-4 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="font-semibold text-foreground">{event.title}</p>
-              <Badge tone={event.status === "Unmatched" ? "warning" : "accent"}>
-                {event.status}
-              </Badge>
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <span className="rounded-lg border border-border bg-panel px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {event.sourceSystem}
-              </span>
-              <span className="text-xs text-muted-foreground">{event.occurredAt}</span>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-foreground">{event.description}</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function ContactCardItem({ contact }: { contact: ContactCard }) {
   return (

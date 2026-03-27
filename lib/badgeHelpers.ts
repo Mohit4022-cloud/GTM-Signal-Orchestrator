@@ -1,5 +1,23 @@
 type BadgeTone = "neutral" | "accent" | "positive" | "warning" | "danger";
 
+// Signal status string → Badge tone
+// Status values are human-readable labels from the backend (not raw enum values)
+export function getSignalStatusTone(status: string): BadgeTone {
+  if (status === "Matched") return "positive";
+  if (status === "Unmatched") return "warning";
+  if (status === "Error") return "danger";
+  return "neutral"; // "Received", "Normalized", or any other state
+}
+
+// SignalReasonTone ("default" | "warning" | "danger") → Badge tone
+export function getSignalReasonTone(
+  tone: "default" | "warning" | "danger",
+): BadgeTone {
+  if (tone === "warning") return "warning";
+  if (tone === "danger") return "danger";
+  return "neutral";
+}
+
 export function getSegmentTone(segment: string): BadgeTone {
   switch (segment) {
     case "SMB":

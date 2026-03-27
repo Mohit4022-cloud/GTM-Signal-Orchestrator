@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project discussions
+    url: https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator/discussions
+    about: Ask questions, share ideas, or discuss roadmap directions.
+  - name: Security policy
+    url: https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator/security/policy
+    about: Review the security disclosure process before reporting vulnerabilities.

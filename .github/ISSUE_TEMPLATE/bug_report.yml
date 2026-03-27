@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a product, data-contract, or workflow bug in Open GTM Signal Orchestrator
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for someone else to reproduce it against the seeded local workspace.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: The account detail page shows an empty signal timeline after seeding.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Run npm run db:seed
+        2. Start the app with npm run dev
+        3. Open /accounts/acc_summitflow_finance
+        4. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The account timeline should show recent matched signals.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: The section renders an empty state instead.
+    validations:
+      required: true
+  - type: input
+    id: route
+    attributes:
+      label: Route or API affected
+      description: Include app routes or API paths if known.
+      placeholder: /accounts/[id] or POST /api/signals
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Data-contract or entity impact
+      description: Note affected entities, contract loaders, or Prisma models if relevant.
+      placeholder: getAccountById(), AccountDetailContract, SignalEvent
+  - type: textarea
+    id: seed
+    attributes:
+      label: Seed or local data notes
+      description: Mention whether this reproduces against a fresh seed and any sample IDs used.
+      placeholder: Reproduces after npm run db:seed using acc_ironpeak.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add screenshots, logs, stack traces, or related details.

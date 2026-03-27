@@ -1,0 +1,61 @@
+name: Feature request
+description: Propose a new GTM workflow, contract, or operator capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are most useful when they describe the GTM workflow, the operator persona, and the contract or data-model impact.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: GTM workflow
+      description: What GTM workflow are you trying to support?
+      placeholder: Route high-intent product signals into an ops review queue with SLA tracking.
+    validations:
+      required: true
+  - type: input
+    id: persona
+    attributes:
+      label: Primary user persona
+      description: Who benefits from this?
+      placeholder: GTM Engineer, RevOps Manager, SDR Manager
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What is missing or painful today?
+      placeholder: There is no way to inspect unresolved identity matches after upload.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want.
+      placeholder: Add an unmatched queue page with source, reason codes, recommended queue, and quick reassignment actions.
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Entities or contracts affected
+      description: List impacted models, APIs, or typed return shapes if known.
+      placeholder: SignalEvent, getRecentSignals(), UnmatchedSignalQueueItemContract
+  - type: textarea
+    id: success
+    attributes:
+      label: Success metric
+      description: How would we know this is useful?
+      placeholder: Ops can resolve unmatched signal events without touching raw database records.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, comparable tools, or design notes.

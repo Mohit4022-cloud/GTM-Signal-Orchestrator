@@ -8,9 +8,11 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "seed": "npm run db:seed",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:verify-seed": "tsx prisma/verify-seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force"
   },

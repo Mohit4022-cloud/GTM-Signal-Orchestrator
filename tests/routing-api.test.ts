@@ -6,12 +6,12 @@ import { db } from "@/lib/db";
 
 import { resetDatabase } from "./helpers/db";
 
-before(() => {
-  resetDatabase();
+before(async () => {
+  await resetDatabase();
 });
 
-after(() => {
-  resetDatabase();
+after(async () => {
+  await resetDatabase();
 });
 
 test("POST /api/routing/simulate returns 200 with a structured routing decision", async () => {

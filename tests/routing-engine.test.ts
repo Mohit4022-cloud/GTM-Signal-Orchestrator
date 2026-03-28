@@ -5,12 +5,12 @@ import { getRoutingDecisionsForEntity, routeAccount, routeLead, simulateRouting 
 
 import { resetDatabase } from "./helpers/db";
 
-before(() => {
-  resetDatabase();
+before(async () => {
+  await resetDatabase();
 });
 
-after(() => {
-  resetDatabase();
+after(async () => {
+  await resetDatabase();
 });
 
 test("seeded routing decisions cover named owner, territory, round robin, strategic, and ops review branches", async () => {

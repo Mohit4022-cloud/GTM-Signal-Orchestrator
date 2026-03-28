@@ -1,3 +1,6 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   AccountStatus,
   AccountTier,
@@ -6,7 +9,6 @@ import {
   LeadStatus,
   LifecycleStage,
   Prisma,
-  PrismaClient,
   Segment,
   SignalType,
   TaskPriority,
@@ -18,7 +20,6 @@ import {
 import type { IngestSignalInput } from "../lib/contracts/signals";
 import { ingestSignal } from "../lib/data/signals";
 import { db } from "../lib/db";
-import { sqliteAdapter } from "../lib/prisma-adapter";
 import { routeLead } from "../lib/routing";
 import {
   recomputeAccountScore,
@@ -27,9 +28,7 @@ import {
   setLeadManualPriorityBoost,
 } from "../lib/scoring";
 
-const prisma = new PrismaClient({
-  adapter: sqliteAdapter,
-});
+const prisma = db;
 
 const baseDate = new Date("2026-03-26T15:00:00.000Z");
 
@@ -1485,7 +1484,7 @@ function getLeadTaskDueAt(lead: { temperature: Temperature }, sequenceIndex: num
   return addHours(baseDate, 48 + (sequenceIndex % 3) * 12);
 }
 
-async function main() {
+export async function clearDemoData() {
   await prisma.auditLog.deleteMany();
   await prisma.task.deleteMany();
   await prisma.routingDecision.deleteMany();
@@ -1496,6 +1495,14 @@ async function main() {
   await prisma.account.deleteMany();
   await prisma.ruleConfig.deleteMany();
   await prisma.user.deleteMany();
+}
+
+export async function seedDemoData(options: { logSummary?: boolean; reset?: boolean } = {}) {
+  const { logSummary = true, reset = true } = options;
+
+  if (reset) {
+    await clearDemoData();
+  }
 
   await prisma.user.createMany({ data: userSeed });
 
@@ -2094,16 +2101,24 @@ async function main() {
 
   await prisma.task.createMany({ data: tasks });
 
-  console.log(
-    `Seeded GTM Signal Orchestrator demo data: ${userSeed.length} users, ${accounts.length} accounts, ${contacts.length} contacts, ${refreshedLeads.length} leads, ${seededSignalInputs.length} signal events, and ${tasks.length} tasks.`,
-  );
+  if (logSummary) {
+    console.log(
+      `Seeded GTM Signal Orchestrator demo data: ${userSeed.length} users, ${accounts.length} accounts, ${contacts.length} contacts, ${refreshedLeads.length} leads, ${seededSignalInputs.length} signal events, and ${tasks.length} tasks.`,
+    );
+  }
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await Promise.all([prisma.$disconnect(), db.$disconnect()]);
-  });
+const isMainModule =
+  typeof process.argv[1] === "string" &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  seedDemoData()
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await db.$disconnect();
+    });
+}

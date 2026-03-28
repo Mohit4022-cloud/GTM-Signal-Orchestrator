@@ -7,12 +7,12 @@ import { POST as uploadPost } from "@/app/api/signals/upload/route";
 
 import { resetDatabase } from "./helpers/db";
 
-before(() => {
-  resetDatabase();
+before(async () => {
+  await resetDatabase();
 });
 
-after(() => {
-  resetDatabase();
+after(async () => {
+  await resetDatabase();
 });
 
 test("POST /api/signals returns 201 for a new matched signal", async () => {

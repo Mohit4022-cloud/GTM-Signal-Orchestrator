@@ -20,12 +20,12 @@ import type { AccountScoringInput, LeadScoringInput } from "@/lib/scoring/input-
 
 import { resetDatabase } from "./helpers/db";
 
-before(() => {
-  resetDatabase();
+before(async () => {
+  await resetDatabase();
 });
 
-after(() => {
-  resetDatabase();
+after(async () => {
+  await resetDatabase();
 });
 
 test("threshold mapping and clamping follow the default deterministic rules", () => {

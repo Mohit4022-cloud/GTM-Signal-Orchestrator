@@ -1,18 +1,15 @@
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { clearDemoData, seedDemoData } from "../../prisma/seed";
 
-export const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
+let resetChain = Promise.resolve();
 
 export function resetDatabase() {
-  execFileSync(npxCommand, ["prisma", "migrate", "reset", "--force"], {
-    cwd: workspaceRoot,
-    stdio: "pipe",
+  resetChain = resetChain.then(async () => {
+    await clearDemoData();
+    await seedDemoData({
+      logSummary: false,
+      reset: false,
+    });
   });
 
-  execFileSync(npmCommand, ["run", "db:seed"], {
-    cwd: workspaceRoot,
-    stdio: "pipe",
-  });
+  return resetChain;
 }

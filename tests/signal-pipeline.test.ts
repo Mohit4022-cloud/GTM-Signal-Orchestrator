@@ -18,12 +18,12 @@ import { parseSignalInput } from "@/lib/validation/signals";
 
 import { resetDatabase } from "./helpers/db";
 
-before(() => {
-  resetDatabase();
+before(async () => {
+  await resetDatabase();
 });
 
-after(() => {
-  resetDatabase();
+after(async () => {
+  await resetDatabase();
 });
 
 test("ingestSignal matches an account by domain only", async () => {

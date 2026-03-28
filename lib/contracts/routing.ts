@@ -34,6 +34,20 @@ export const routingReasonCodeValues = [
 
 export type RoutingReasonCode = (typeof routingReasonCodeValues)[number];
 
+export type RoutingReasonCategory =
+  | "match"
+  | "capacity"
+  | "fallback"
+  | "sla"
+  | "outcome";
+
+export type RoutingReasonDetailContract = {
+  code: RoutingReasonCode;
+  label: string;
+  description: string;
+  category: RoutingReasonCategory;
+};
+
 export const routingSimulationCapacityScenarioValues = [
   "current",
   "named_owner_overloaded",
@@ -81,6 +95,7 @@ export type RoutingEvaluationStepContract = {
   selected: boolean;
   skippedReason: string | null;
   reasonCodes: RoutingReasonCode[];
+  reasonDetails: RoutingReasonDetailContract[];
   candidateOwnerIds: string[];
   capacityChecks: RoutingCapacitySnapshotContract[];
 };
@@ -121,9 +136,11 @@ export type RoutingSlaContract = {
   targetMinutes: number | null;
   dueAtIso: string | null;
   reasonCodes: RoutingReasonCode[];
+  reasonDetails: RoutingReasonDetailContract[];
 };
 
 export type RoutingExplanationContract = {
+  summary: string;
   decision: RoutingExplanationDecision;
   appliedPolicy: RoutingAppliedPolicyContract;
   evaluatedPolicies: RoutingEvaluationStepContract[];
@@ -135,6 +152,7 @@ export type RoutingExplanationContract = {
   };
   sla: RoutingSlaContract;
   reasonCodes: RoutingReasonCode[];
+  reasonDetails: RoutingReasonDetailContract[];
 };
 
 export type RoutingDecisionContract = {
@@ -153,6 +171,7 @@ export type RoutingDecisionContract = {
   slaDueAtIso: string | null;
   escalationPolicyKey: string | null;
   reasonCodes: RoutingReasonCode[];
+  reasonDetails: RoutingReasonDetailContract[];
   explanation: RoutingExplanationContract;
   triggerSignalId: string | null;
   createdAtIso: string;
@@ -183,6 +202,7 @@ export type RoutingSimulationResultContract = {
   simulatedTeam: string | null;
   simulatedQueue: string;
   reasonCodes: RoutingReasonCode[];
+  reasonDetails: RoutingReasonDetailContract[];
   slaTargetMinutes: number | null;
   slaDueAtIso: string | null;
   explanation: RoutingExplanationContract;

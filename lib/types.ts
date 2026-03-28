@@ -88,6 +88,7 @@ export type {
   ScoreHistoryListContract,
   ScoreHistoryQueryOptions,
   ScoreHistoryRowContract,
+  ScoreReasonDetailContract,
   ScoreReasonCode,
   ScoreRecomputeTriggerContract,
 } from "@/lib/contracts/scoring";

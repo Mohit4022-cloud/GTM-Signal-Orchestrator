@@ -1,4 +1,8 @@
-import type { ScoreComponentKey, ScoreReasonCode } from "@/lib/contracts/scoring";
+import type {
+  ScoreComponentKey,
+  ScoreReasonCode,
+  ScoreReasonDetailContract,
+} from "@/lib/contracts/scoring";
 
 type ScoreReasonMetadata = {
   component: ScoreComponentKey;
@@ -240,7 +244,38 @@ export const scoreReasonMetadata: Record<ScoreReasonCode, ScoreReasonMetadata> =
 };
 
 export const scoreReasonCodeValues = Object.keys(scoreReasonMetadata) as ScoreReasonCode[];
+export const scoreReasonCodeSet = new Set<ScoreReasonCode>(scoreReasonCodeValues);
 
 export function getScoreReasonMetadata(reasonCode: ScoreReasonCode) {
   return scoreReasonMetadata[reasonCode];
+}
+
+export function parseScoreReasonCodes(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (reasonCode): reasonCode is ScoreReasonCode =>
+      typeof reasonCode === "string" && scoreReasonCodeSet.has(reasonCode as ScoreReasonCode),
+  );
+}
+
+export function getScoreReasonDetail(
+  reasonCode: ScoreReasonCode,
+  componentKey: ScoreComponentKey,
+  componentLabel: string,
+  points: number,
+): ScoreReasonDetailContract {
+  const metadata = getScoreReasonMetadata(reasonCode);
+
+  return {
+    code: reasonCode,
+    label: metadata.label,
+    description: metadata.description,
+    componentKey,
+    componentLabel,
+    direction: points >= 0 ? "positive" : "negative",
+    points,
+  };
 }

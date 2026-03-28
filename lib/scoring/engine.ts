@@ -9,6 +9,7 @@ import type {
   ScoreReasonCode,
   ScoringConfigContract,
 } from "@/lib/contracts/scoring";
+import { normalizeEntityScoreBreakdown } from "@/lib/scoring/normalize";
 import { getScoreReasonMetadata } from "@/lib/scoring/reason-codes";
 import { clampTotalScore, deriveTemperature } from "@/lib/scoring/temperature";
 
@@ -647,16 +648,14 @@ function buildEntityScoreBreakdown(
   const temperature = deriveTemperature(totalScore, config.thresholds);
   const topContributors = buildTopContributors(componentBreakdown);
 
-  return {
+  return normalizeEntityScoreBreakdown({
     totalScore,
     temperature,
     componentBreakdown,
-    topReasonCodes: topContributors.slice(0, 5).map((contributor) => contributor.reasonCode),
-    topContributors: topContributors.slice(0, 5),
     explanation: buildExplanation(totalScore, topContributors, temperature),
     lastUpdatedAtIso: now.toISOString(),
     scoringVersion: config.version,
-  };
+  });
 }
 
 export function computeAccountScore(

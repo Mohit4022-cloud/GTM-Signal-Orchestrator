@@ -29,6 +29,7 @@ import {
   buildRoutingExplanation,
   uniqueRoutingReasonCodes,
 } from "./explanation";
+import { buildRoutingReasonDetails } from "./reason-codes";
 import { resolveRoutingSla } from "./sla";
 
 type TriggerSignalContext = {
@@ -137,6 +138,10 @@ function buildStep(params: {
     selected: params.selected,
     skippedReason: params.skippedReason,
     reasonCodes: uniqueRoutingReasonCodes(params.reasonCodes),
+    reasonDetails: buildRoutingReasonDetails(
+      uniqueRoutingReasonCodes(params.reasonCodes),
+      { includeNoisy: true },
+    ),
     candidateOwnerIds: params.candidateOwnerIds,
     capacityChecks: params.capacityChecks,
   };

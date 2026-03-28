@@ -46,7 +46,8 @@ import {
   type EvaluatedRoutingDecision,
   type RoutingEvaluationContext,
 } from "./engine";
-import { parseRoutingReasonCodes } from "./reason-codes";
+import { normalizeRoutingDecisionRow } from "./normalize";
+import { buildRoutingReasonDetails, parseRoutingReasonCodes } from "./reason-codes";
 
 type RoutingClient = Prisma.TransactionClient | PrismaClient;
 
@@ -204,6 +205,7 @@ function parseEvaluationStep(value: unknown) {
     skippedReason:
       typeof value.skippedReason === "string" ? value.skippedReason : null,
     reasonCodes,
+    reasonDetails: buildRoutingReasonDetails(reasonCodes, { includeNoisy: true }),
     candidateOwnerIds,
     capacityChecks,
   };
@@ -212,6 +214,7 @@ function parseEvaluationStep(value: unknown) {
 function parseExplanation(value: unknown): RoutingExplanationContract {
   if (!isRecord(value)) {
     return {
+      summary: "Sent to ops-review via Ops review queue.",
       decision: "sent_to_ops_review",
       appliedPolicy: {
         precedence: 0,
@@ -247,8 +250,10 @@ function parseExplanation(value: unknown): RoutingExplanationContract {
         targetMinutes: null,
         dueAtIso: null,
         reasonCodes: [],
+        reasonDetails: [],
       },
       reasonCodes: [],
+      reasonDetails: [],
     };
   }
 
@@ -322,8 +327,16 @@ function parseExplanation(value: unknown): RoutingExplanationContract {
       targetMinutes: typeof sla.targetMinutes === "number" ? sla.targetMinutes : null,
       dueAtIso: typeof sla.dueAtIso === "string" ? sla.dueAtIso : null,
       reasonCodes: parseRoutingReasonCodes(sla.reasonCodes),
+      reasonDetails: buildRoutingReasonDetails(parseRoutingReasonCodes(sla.reasonCodes), {
+        includeNoisy: true,
+      }),
     },
     reasonCodes: parseRoutingReasonCodes(value.reasonCodes),
+    reasonDetails: buildRoutingReasonDetails(parseRoutingReasonCodes(value.reasonCodes)),
+    summary:
+      typeof value.summary === "string"
+        ? value.summary
+        : "Routing explanation unavailable.",
   };
 }
 
@@ -363,7 +376,7 @@ function mapRoutingDecisionRow(row: {
       }
     | null;
 }): RoutingDecisionContract {
-  return {
+  return normalizeRoutingDecisionRow({
     id: row.id,
     entityType: row.entityType === PrismaRoutingEntityType.ACCOUNT ? "account" : "lead",
     entityId: row.entityId,
@@ -394,11 +407,11 @@ function mapRoutingDecisionRow(row: {
     slaTargetMinutes: row.slaTargetMinutes,
     slaDueAtIso: row.slaDueAt?.toISOString() ?? null,
     escalationPolicyKey: row.escalationPolicyKey,
-    reasonCodes: parseRoutingReasonCodes(row.reasonCodesJson),
-    explanation: parseExplanation(row.explanationJson),
+    reasonCodes: row.reasonCodesJson,
+    explanation: row.explanationJson,
     triggerSignalId: row.triggerSignalId,
     createdAtIso: row.createdAt.toISOString(),
-  };
+  });
 }
 
 async function getTriggerSignal(
@@ -1125,6 +1138,7 @@ export async function simulateRouting(
     simulatedTeam: decision.assignedTeam,
     simulatedQueue: decision.assignedQueue,
     reasonCodes: decision.reasonCodes,
+    reasonDetails: buildRoutingReasonDetails(decision.reasonCodes),
     slaTargetMinutes: decision.slaTargetMinutes,
     slaDueAtIso: decision.slaDueAt?.toISOString() ?? null,
     explanation: decision.explanation,

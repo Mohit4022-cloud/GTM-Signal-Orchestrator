@@ -1,12 +1,15 @@
 import type { ScoreEntityType, ScoreTriggerType, Temperature } from "@prisma/client";
 
-export type ScoreComponentKey =
-  | "fit"
-  | "intent"
-  | "engagement"
-  | "recency"
-  | "productUsage"
-  | "manualPriority";
+export const scoreComponentKeyValues = [
+  "fit",
+  "intent",
+  "engagement",
+  "recency",
+  "productUsage",
+  "manualPriority",
+] as const;
+
+export type ScoreComponentKey = (typeof scoreComponentKeyValues)[number];
 
 export type ScoreReasonCode =
   | "fit_smb_segment"
@@ -66,6 +69,16 @@ export type ScoreContributorContract = {
   direction: ScoreDirection;
 };
 
+export type ScoreReasonDetailContract = {
+  code: ScoreReasonCode;
+  label: string;
+  description: string;
+  componentKey: ScoreComponentKey;
+  componentLabel: string;
+  direction: ScoreDirection;
+  points: number;
+};
+
 export type ScoreComponentBreakdownContract = {
   key: ScoreComponentKey;
   label: string;
@@ -86,6 +99,7 @@ export type EntityScoreBreakdownContract = {
   temperature: Temperature;
   componentBreakdown: ScoreComponentBreakdownContract[];
   topReasonCodes: ScoreReasonCode[];
+  reasonDetails: ScoreReasonDetailContract[];
   topContributors: ScoreContributorContract[];
   explanation: ScoreExplanationContract;
   lastUpdatedAtIso: string | null;
@@ -110,6 +124,7 @@ export type ScoreHistoryRowContract = {
   previousTemperature: Temperature;
   newTemperature: Temperature;
   reasonCodes: ScoreReasonCode[];
+  reasonDetails: ScoreReasonDetailContract[];
   componentBreakdown: ScoreComponentBreakdownContract[];
   explanation: ScoreExplanationContract;
   createdAtIso: string;

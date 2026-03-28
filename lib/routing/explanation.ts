@@ -6,6 +6,7 @@ import type {
   RoutingOwnerSummaryContract,
   RoutingReasonCode,
 } from "@/lib/contracts/routing";
+import { buildRoutingReasonDetails } from "@/lib/routing/reason-codes";
 
 type BuildRoutingExplanationParams = {
   decisionType: RoutingDecisionType;
@@ -49,6 +50,7 @@ export function buildRoutingExplanation(
   );
 
   return {
+    summary: "",
     decision:
       params.assignedOwner === null ? "sent_to_ops_review" : "assigned_to_owner",
     appliedPolicy: {
@@ -73,8 +75,12 @@ export function buildRoutingExplanation(
       targetMinutes: params.slaTargetMinutes,
       dueAtIso: params.slaDueAt?.toISOString() ?? null,
       reasonCodes: params.slaReasonCodes,
+      reasonDetails: buildRoutingReasonDetails(params.slaReasonCodes, {
+        includeNoisy: true,
+      }),
     },
     reasonCodes: uniqueRoutingReasonCodes(params.reasonCodes),
+    reasonDetails: buildRoutingReasonDetails(uniqueRoutingReasonCodes(params.reasonCodes)),
   };
 }
 

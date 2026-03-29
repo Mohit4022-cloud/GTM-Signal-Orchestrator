@@ -19,6 +19,7 @@ type AuditPayload = {
   reasonCodes?: string[];
   beforeState?: JsonRecord | null;
   afterState?: JsonRecord | null;
+  createdAt?: Date;
 };
 
 const ACTOR_TYPE = "system";
@@ -44,6 +45,7 @@ async function createSignalAuditLog(client: SignalAuditClient, payload: AuditPay
     reasonCodes: payload.reasonCodes ?? [],
     before: payload.beforeState,
     after: payload.afterState,
+    createdAt: payload.createdAt,
   });
 }
 
@@ -54,6 +56,7 @@ export function recordSignalIngested(
     accountId?: string | null;
     leadId?: string | null;
     rawPayload: JsonRecord;
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -65,6 +68,7 @@ export function recordSignalIngested(
     explanation: "Signal ingested into the canonical pipeline.",
     reasonCodes: [],
     afterState: params.rawPayload,
+    createdAt: params.createdAt,
   });
 }
 
@@ -75,6 +79,7 @@ export function recordSignalNormalized(
     accountId?: string | null;
     leadId?: string | null;
     normalizedEvent: CanonicalSignalEventContract;
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -86,6 +91,7 @@ export function recordSignalNormalized(
     explanation: "Signal normalized into the canonical event model.",
     reasonCodes: [],
     afterState: params.normalizedEvent as JsonRecord,
+    createdAt: params.createdAt,
   });
 }
 
@@ -98,6 +104,7 @@ export function recordIdentityMatched(
     explanation: string;
     reasonCodes: IdentityResolutionCode[];
     contactId?: string | null;
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -113,6 +120,7 @@ export function recordIdentityMatched(
       contactId: params.contactId ?? null,
       reasonCodes: params.reasonCodes,
     },
+    createdAt: params.createdAt,
   });
 }
 
@@ -122,6 +130,7 @@ export function recordSignalUnmatchedQueued(
     signalId: string;
     explanation: string;
     reasonCodes: IdentityResolutionCode[];
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -134,6 +143,7 @@ export function recordSignalUnmatchedQueued(
       queue: "unmatched",
       reasonCodes: params.reasonCodes,
     },
+    createdAt: params.createdAt,
   });
 }
 
@@ -143,6 +153,7 @@ export function recordSignalDuplicateSkipped(
     signalId: string;
     existingSignalId: string;
     dedupeKey: string;
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -155,6 +166,7 @@ export function recordSignalDuplicateSkipped(
       existingSignalId: params.existingSignalId,
       dedupeKey: params.dedupeKey,
     },
+    createdAt: params.createdAt,
   });
 }
 
@@ -164,6 +176,7 @@ export function recordSignalIngestError(
     signalId: string;
     errorMessage: string;
     rawPayload: JsonRecord;
+    createdAt?: Date;
   },
 ) {
   return createSignalAuditLog(client, {
@@ -176,5 +189,6 @@ export function recordSignalIngestError(
       rawPayload: params.rawPayload,
       errorMessage: params.errorMessage,
     },
+    createdAt: params.createdAt,
   });
 }

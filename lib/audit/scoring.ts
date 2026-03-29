@@ -18,6 +18,7 @@ type AuditPayload = {
   reasonCodes?: string[];
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
+  createdAt?: Date;
 };
 
 const DEFAULT_ACTOR_TYPE = "system";
@@ -42,6 +43,7 @@ async function createScoringAuditLog(client: ScoringAuditClient, payload: AuditP
     reasonCodes: payload.reasonCodes ?? [],
     before: payload.beforeState,
     after: payload.afterState,
+    createdAt: payload.createdAt,
   });
 }
 
@@ -56,6 +58,7 @@ export function recordScoreRecomputed(
     reasonCodes?: string[];
     beforeState: Record<string, unknown>;
     afterState: Record<string, unknown>;
+    createdAt?: Date;
   },
 ) {
   return createScoringAuditLog(client, {
@@ -69,6 +72,7 @@ export function recordScoreRecomputed(
     reasonCodes: params.reasonCodes ?? [],
     beforeState: params.beforeState,
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }
 
@@ -83,6 +87,7 @@ export function recordScoreThresholdCrossed(
     newTemperature: string;
     newScore: number;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createScoringAuditLog(client, {
@@ -101,6 +106,7 @@ export function recordScoreThresholdCrossed(
       temperature: params.newTemperature,
       score: params.newScore,
     },
+    createdAt: params.createdAt,
   });
 }
 
@@ -116,6 +122,7 @@ export function recordScoreManualPriorityOverridden(
     previousBoost: number;
     newBoost: number;
     note?: string | null;
+    createdAt?: Date;
   },
 ) {
   return createScoringAuditLog(client, {
@@ -140,6 +147,7 @@ export function recordScoreManualPriorityOverridden(
       manualPriorityBoost: params.newBoost,
       note: params.note ?? null,
     },
+    createdAt: params.createdAt,
   });
 }
 
@@ -153,6 +161,7 @@ export function recordSignalAttachedAndRescored(
     reasonCodes?: string[];
     beforeState: Record<string, unknown>;
     afterState: Record<string, unknown>;
+    createdAt?: Date;
   },
 ) {
   return createScoringAuditLog(client, {
@@ -166,5 +175,6 @@ export function recordSignalAttachedAndRescored(
     reasonCodes: params.reasonCodes ?? [],
     beforeState: params.beforeState,
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }

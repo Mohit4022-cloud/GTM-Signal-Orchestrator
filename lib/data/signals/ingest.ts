@@ -136,12 +136,14 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
         signalId,
         accountId: identityResolution.account?.id ?? null,
         rawPayload: normalizedSignal.rawPayload,
+        createdAt: normalizedSignal.receivedAt,
       });
 
       await recordSignalNormalized(tx, {
         signalId,
         accountId: identityResolution.account?.id ?? null,
         normalizedEvent: normalizedSignal.normalizedPayload,
+        createdAt: normalizedSignal.receivedAt,
       });
 
       if (identityResolution.matched) {
@@ -151,6 +153,7 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
           contactId: identityResolution.contact?.id ?? null,
           explanation: identityResolution.explanation,
           reasonCodes: identityResolution.reasonCodes,
+          createdAt: normalizedSignal.receivedAt,
         });
 
         await recomputeScoresForSignalWithClient(tx, signalId, {
@@ -170,6 +173,7 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
         signalId,
         explanation: identityResolution.explanation,
         reasonCodes: identityResolution.reasonCodes,
+        createdAt: normalizedSignal.receivedAt,
       });
     });
   } catch (error) {
@@ -206,6 +210,7 @@ export async function ingestSignal(input: IngestSignalInput | unknown): Promise<
         signalId,
         errorMessage,
         rawPayload: normalizedSignal.rawPayload,
+        createdAt: normalizedSignal.receivedAt,
       });
     } catch {
       // Ignore follow-on persistence errors and surface the original failure.

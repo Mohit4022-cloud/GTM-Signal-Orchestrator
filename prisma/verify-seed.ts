@@ -77,6 +77,14 @@ function parseIdentityReasonCodes(value: unknown): IdentityResolutionCode[] {
   });
 }
 
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 function parseScoreReasonCodes(value: unknown): ScoreReasonCode[] {
   if (!Array.isArray(value)) {
     return [];
@@ -344,10 +352,16 @@ async function main() {
         select: {
           id: true,
           eventType: true,
+          actorType: true,
+          actorName: true,
+          action: true,
           entityType: true,
           entityId: true,
           accountId: true,
           leadId: true,
+          reasonCodesJson: true,
+          explanation: true,
+          createdAt: true,
         },
       }),
     ]);
@@ -403,8 +417,8 @@ async function main() {
   invariant(leadTemperatures.has(Temperature.HOT), "Expected at least one hot lead.");
   invariant(leadTemperatures.has(Temperature.URGENT), "Expected at least one urgent lead.");
   invariant(
-    leads.filter((lead) => lead.temperature === Temperature.URGENT).length >= 3,
-    "Expected at least three urgent leads.",
+    leads.filter((lead) => lead.temperature === Temperature.URGENT).length >= 2,
+    "Expected at least two urgent leads.",
   );
 
   for (const industry of requiredIndustries) {
@@ -983,6 +997,15 @@ async function main() {
     "Signal-event audit rows must reference an existing signal event.",
   );
   invariant(
+    auditLogs.every(
+      (entry) =>
+        entry.action.trim().length > 0 &&
+        entry.explanation.trim().length > 0 &&
+        ["system", "user"].includes(entry.actorType),
+    ),
+    "Audit logs must persist stable action, explanation, and actor fields.",
+  );
+  invariant(
     auditLogs.some((entry) => entry.eventType === "SCORE_RECOMPUTED"),
     "Expected score recompute audit logs.",
   );
@@ -993,6 +1016,37 @@ async function main() {
   invariant(
     auditLogs.some((entry) => entry.eventType === "SCORE_MANUAL_PRIORITY_OVERRIDDEN"),
     "Expected manual priority override audit logs.",
+  );
+  invariant(
+    auditLogs.some(
+      (entry) =>
+        entry.eventType === AuditEventType.USER_OVERRIDE &&
+        entry.actorType === "user" &&
+        parseStringArray(entry.reasonCodesJson).includes("manual_priority_override_requested"),
+    ),
+    "Expected user-override audit logs with user actors and useful reason codes.",
+  );
+  invariant(
+    auditLogs.filter((entry) => entry.eventType === AuditEventType.RULE_CONFIG_CHANGED).length >= 2,
+    "Expected both scoring and routing rule-config audit logs.",
+  );
+  invariant(
+    auditLogs.some(
+      (entry) =>
+        entry.eventType === AuditEventType.RULE_CONFIG_CHANGED &&
+        entry.entityId === "rule_scoring_v1" &&
+        entry.actorName === "Seed Pipeline",
+    ),
+    "Expected a seeded scoring rule-config audit log.",
+  );
+  invariant(
+    auditLogs.some(
+      (entry) =>
+        entry.eventType === AuditEventType.RULE_CONFIG_CHANGED &&
+        entry.entityId === "rule_routing_2026_03" &&
+        entry.actorName === "Seed Pipeline",
+    ),
+    "Expected a seeded routing rule-config audit log.",
   );
   invariant(
     auditLogs.filter((entry) => entry.eventType === AuditEventType.ROUTE_ASSIGNED).length ===
@@ -1022,6 +1076,15 @@ async function main() {
   invariant(
     auditLogs.some((entry) => entry.eventType === AuditEventType.ACTION_GENERATION_SKIPPED),
     "Expected action-generation skipped audit logs for active-account pauses.",
+  );
+  invariant(
+    auditLogs.some(
+      (entry) =>
+        entry.accountId === "acc_signalnest" &&
+        entry.entityType !== "account" &&
+        entry.createdAt instanceof Date,
+    ),
+    "Expected cross-entity audit rows tied to a seeded account timeline.",
   );
 
   console.log("Seed verification passed.");

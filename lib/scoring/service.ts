@@ -15,6 +15,7 @@ import {
   recordScoreThresholdCrossed,
   recordSignalAttachedAndRescored,
 } from "@/lib/audit/scoring";
+import { recordUserOverride } from "@/lib/audit/rules";
 import type {
   EntityScoreBreakdownContract,
   ScoreComponentBreakdownContract,
@@ -254,6 +255,7 @@ async function recomputeAccountScoreWithClient(
     accountId: account.id,
     explanation: nextScore.explanation.summary,
     reasonCodes: nextReasonCodes,
+    createdAt: effectiveAt,
     beforeState: {
       totalScore: account.overallScore,
       temperature: account.temperature,
@@ -276,6 +278,7 @@ async function recomputeAccountScoreWithClient(
       newTemperature: nextScore.temperature,
       newScore: nextScore.totalScore,
       reasonCodes: nextReasonCodes,
+      createdAt: effectiveAt,
     });
   }
 
@@ -426,6 +429,7 @@ async function recomputeLeadScoreWithClient(
     leadId: lead.id,
     explanation: nextScore.explanation.summary,
     reasonCodes: nextReasonCodes,
+    createdAt: effectiveAt,
     beforeState: {
       totalScore: lead.score,
       temperature: lead.temperature,
@@ -451,6 +455,7 @@ async function recomputeLeadScoreWithClient(
       newTemperature: nextScore.temperature,
       newScore: nextScore.totalScore,
       reasonCodes: nextReasonCodes,
+      createdAt: effectiveAt,
     });
   }
 
@@ -647,6 +652,28 @@ export async function setAccountManualPriorityBoost(
       previousBoost: account.manualPriorityBoost,
       newBoost: nextBoost,
       note: actor.note,
+      createdAt: effectiveAt,
+    });
+
+    await recordUserOverride(tx, {
+      entityType: "account",
+      entityId: accountId,
+      accountId,
+      actorType: actor.actorType === "user" ? "user" : "system",
+      actorName: actor.actorName,
+      explanation:
+        actor.note && actor.note.trim().length > 0
+          ? `Workspace operator changed account priority boost from ${account.manualPriorityBoost} to ${nextBoost}. ${actor.note.trim()}`
+          : `Workspace operator changed account priority boost from ${account.manualPriorityBoost} to ${nextBoost}.`,
+      reasonCodes: ["manual_priority_override_requested"],
+      beforeState: {
+        manualPriorityBoost: account.manualPriorityBoost,
+      },
+      afterState: {
+        manualPriorityBoost: nextBoost,
+        note: actor.note ?? null,
+      },
+      createdAt: effectiveAt,
     });
 
     return recomputeAccountScoreWithClient(tx, accountId, {
@@ -706,6 +733,29 @@ export async function setLeadManualPriorityBoost(
       previousBoost: lead.manualPriorityBoost,
       newBoost: nextBoost,
       note: actor.note,
+      createdAt: effectiveAt,
+    });
+
+    await recordUserOverride(tx, {
+      entityType: "lead",
+      entityId: leadId,
+      accountId: lead.accountId,
+      leadId,
+      actorType: actor.actorType === "user" ? "user" : "system",
+      actorName: actor.actorName,
+      explanation:
+        actor.note && actor.note.trim().length > 0
+          ? `Workspace operator changed lead priority boost from ${lead.manualPriorityBoost} to ${nextBoost}. ${actor.note.trim()}`
+          : `Workspace operator changed lead priority boost from ${lead.manualPriorityBoost} to ${nextBoost}.`,
+      reasonCodes: ["manual_priority_override_requested"],
+      beforeState: {
+        manualPriorityBoost: lead.manualPriorityBoost,
+      },
+      afterState: {
+        manualPriorityBoost: nextBoost,
+        note: actor.note ?? null,
+      },
+      createdAt: effectiveAt,
     });
 
     return recomputeLeadScoreWithClient(tx, leadId, {

@@ -78,6 +78,7 @@ async function createSlaEvent(
     resolvedAt?: Date | null;
     explanation: string;
     reasonCodes?: string[];
+    createdAt?: Date | null;
   },
 ) {
   return client.slaEvent.create({
@@ -99,6 +100,7 @@ async function createSlaEvent(
         summary: params.explanation,
         reasonCodes: params.reasonCodes ?? [],
       }),
+      createdAt: params.createdAt ?? undefined,
     },
   });
 }
@@ -199,6 +201,7 @@ export async function assignSlaForLeadWithClient(
       dueAt: resolvedPolicy.dueAt,
       explanation,
       reasonCodes: resolvedPolicy.reasonCodes,
+      createdAt: referenceTime,
     });
     await recordSlaAssigned(client, {
       entityType: "lead",
@@ -207,6 +210,7 @@ export async function assignSlaForLeadWithClient(
       leadId,
       explanation,
       reasonCodes: resolvedPolicy.reasonCodes,
+      createdAt: referenceTime,
       afterState: {
         policyKey: resolvedPolicy.policyKey,
         policyVersion: resolvedPolicy.policyVersion,
@@ -312,6 +316,7 @@ export async function assignSlaForTaskWithClient(
       targetMinutes,
       dueAt,
       explanation,
+      createdAt: task.createdAt,
     });
     await recordSlaAssigned(client, {
       entityType: "task",
@@ -320,6 +325,7 @@ export async function assignSlaForTaskWithClient(
       leadId: task.leadId,
       explanation,
       reasonCodes: shouldTrack ? ["sla_tracking_enabled"] : [],
+      createdAt: task.createdAt,
       afterState: {
         isSlaTracked: shouldTrack,
         policyKey,
@@ -658,6 +664,7 @@ export async function runSlaBreachChecksWithClient(client: SlaClient, now = new 
       breachedAt: now,
       explanation,
       reasonCodes: ["sla_breached_no_response"],
+      createdAt: now,
     });
     await recordSlaBreached(client, {
       entityType: "lead",
@@ -666,6 +673,7 @@ export async function runSlaBreachChecksWithClient(client: SlaClient, now = new 
       leadId: lead.id,
       explanation,
       reasonCodes: ["sla_breached_no_response"],
+      createdAt: now,
       beforeState: {
         slaStatus: lead.slaStatus,
         dueAt: lead.slaDeadlineAt?.toISOString() ?? null,
@@ -699,6 +707,7 @@ export async function runSlaBreachChecksWithClient(client: SlaClient, now = new 
         dueAt: lead.slaDeadlineAt,
         breachedAt: now,
         explanation: `Created escalation task ${escalation.id} for breached lead ${lead.id}.`,
+        createdAt: now,
       });
     }
   }
@@ -726,6 +735,7 @@ export async function runSlaBreachChecksWithClient(client: SlaClient, now = new 
       breachedAt: now,
       explanation,
       reasonCodes: ["sla_breached_no_response"],
+      createdAt: now,
     });
     await recordSlaBreached(client, {
       entityType: "task",
@@ -734,6 +744,7 @@ export async function runSlaBreachChecksWithClient(client: SlaClient, now = new 
       leadId: task.leadId,
       explanation,
       reasonCodes: ["sla_breached_no_response"],
+      createdAt: now,
       beforeState: {
         slaStatus: task.slaStatus,
         dueAt: task.dueAt.toISOString(),
@@ -823,6 +834,7 @@ export async function resolveLeadSlaWithClient(
       resolvedAt,
       explanation,
       reasonCodes: metSla ? ["sla_met_first_response_on_time"] : ["sla_breached_no_response"],
+      createdAt: resolvedAt,
     });
     await recordSlaResolved(client, {
       entityType: "lead",
@@ -831,6 +843,7 @@ export async function resolveLeadSlaWithClient(
       leadId: lead.id,
       explanation,
       reasonCodes: metSla ? ["sla_met_first_response_on_time"] : ["sla_breached_no_response"],
+      createdAt: resolvedAt,
       beforeState: {
         firstResponseAt: lead.firstResponseAt?.toISOString() ?? null,
         slaStatus: lead.slaBreachedAt ? "BREACHED" : "ON_TRACK",
@@ -923,6 +936,7 @@ export async function resolveTaskSlaWithClient(
       resolvedAt: params.completedAt,
       explanation,
       reasonCodes: metSla ? ["sla_met_first_response_on_time"] : ["sla_breached_no_response"],
+      createdAt: params.completedAt,
     });
     await recordSlaResolved(client, {
       entityType: "task",
@@ -931,6 +945,7 @@ export async function resolveTaskSlaWithClient(
       leadId: task.leadId,
       explanation,
       reasonCodes: metSla ? ["sla_met_first_response_on_time"] : ["sla_breached_no_response"],
+      createdAt: params.completedAt,
       beforeState: {
         completedAt: task.completedAt?.toISOString() ?? null,
         slaStatus: task.slaBreachedAt ? "BREACHED" : "ON_TRACK",

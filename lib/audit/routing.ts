@@ -15,6 +15,7 @@ type RoutingAuditPayload = {
   reasonCodes?: string[];
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
+  createdAt?: Date;
 };
 
 const ACTOR_TYPE = "system";
@@ -42,6 +43,7 @@ async function createRoutingAuditLog(
     reasonCodes: payload.reasonCodes ?? [],
     before: payload.beforeState,
     after: payload.afterState,
+    createdAt: payload.createdAt,
   });
 }
 
@@ -55,6 +57,7 @@ export function recordRoutingDecisionCreated(
     explanation: string;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createRoutingAuditLog(client, {
@@ -67,6 +70,7 @@ export function recordRoutingDecisionCreated(
     explanation: params.explanation,
     reasonCodes: params.reasonCodes ?? [],
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }
 
@@ -81,6 +85,7 @@ export function recordRoutingFallbackCapacity(
     beforeState: Record<string, unknown>;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createRoutingAuditLog(client, {
@@ -94,6 +99,7 @@ export function recordRoutingFallbackCapacity(
     reasonCodes: params.reasonCodes ?? [],
     beforeState: params.beforeState,
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }
 
@@ -107,6 +113,7 @@ export function recordRoutingSentToOpsReview(
     explanation: string;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createRoutingAuditLog(client, {
@@ -119,5 +126,6 @@ export function recordRoutingSentToOpsReview(
     explanation: params.explanation,
     reasonCodes: params.reasonCodes ?? [],
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }

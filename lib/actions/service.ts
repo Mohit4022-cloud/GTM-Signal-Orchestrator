@@ -132,6 +132,7 @@ function isSdrLikeRole(role: string | null | undefined) {
 async function createTaskFromTemplateWithClient(
   client: ActionClient,
   draft: TaskDraft,
+  createdAt: Date,
 ): Promise<CreatedTaskResult> {
   if (draft.dedupeKey) {
     const existing = await client.task.findUnique({
@@ -147,6 +148,7 @@ async function createTaskFromTemplateWithClient(
         leadId: draft.leadId,
         explanation: `Duplicate ${draft.actionType} prevented by dedupe key ${draft.dedupeKey}.`,
         reasonCodes: draft.reasonCodes,
+        createdAt,
         afterState: {
           actionType: draft.actionType,
           dedupeKey: draft.dedupeKey,
@@ -182,6 +184,7 @@ async function createTaskFromTemplateWithClient(
       triggerSignalId: draft.triggerSignalId,
       triggerRoutingDecisionId: draft.triggerRoutingDecisionId,
       triggerScoreHistoryId: draft.triggerScoreHistoryId,
+      createdAt,
     },
   });
 
@@ -193,6 +196,7 @@ async function createTaskFromTemplateWithClient(
     leadId: draft.leadId,
     explanation: draft.explanation.summary,
     reasonCodes: draft.reasonCodes,
+    createdAt,
     afterState: {
       taskType: draft.taskType,
       actionType: draft.actionType,
@@ -213,12 +217,13 @@ async function createTaskFromTemplateWithClient(
 }
 
 export async function createTaskFromTemplate(draft: TaskDraft) {
-  return createTaskFromTemplateWithClient(db, draft);
+  return createTaskFromTemplateWithClient(db, draft, new Date());
 }
 
 async function createRecommendationWithClient(
   client: ActionClient,
   draft: RecommendationDraft,
+  createdAt: Date,
 ): Promise<CreatedRecommendationResult> {
   if (draft.dedupeKey) {
     const existing = await client.actionRecommendation.findUnique({
@@ -234,6 +239,7 @@ async function createRecommendationWithClient(
         leadId: draft.leadId,
         explanation: `Duplicate ${draft.recommendationType} prevented by dedupe key ${draft.dedupeKey}.`,
         reasonCodes: draft.reasonCodes,
+        createdAt,
         afterState: {
           recommendationType: draft.recommendationType,
           dedupeKey: draft.dedupeKey,
@@ -267,6 +273,7 @@ async function createRecommendationWithClient(
       triggerSignalId: draft.triggerSignalId,
       triggerRoutingDecisionId: draft.triggerRoutingDecisionId,
       triggerScoreHistoryId: draft.triggerScoreHistoryId,
+      createdAt,
     },
   });
 
@@ -278,6 +285,7 @@ async function createRecommendationWithClient(
     leadId: draft.leadId,
     explanation: draft.explanation.summary,
     reasonCodes: draft.reasonCodes,
+    createdAt,
     afterState: {
       recommendationType: draft.recommendationType,
       actionCategory: draft.actionCategory,
@@ -303,13 +311,14 @@ async function runGeneratedOutputs(
   accountId: string | null,
   leadId: string | null,
   evaluation: ReturnType<typeof evaluateLeadActionRules> | ReturnType<typeof evaluateAccountActionRules>,
+  generatedAt: Date,
 ): Promise<ActionGenerationRunContract> {
   const createdTaskIds: string[] = [];
   const createdRecommendationIds: string[] = [];
   const preventedDuplicateKeys: string[] = [];
 
   for (const task of evaluation.tasks) {
-    const result = await createTaskFromTemplateWithClient(client, task);
+    const result = await createTaskFromTemplateWithClient(client, task, generatedAt);
     if (result.created) {
       createdTaskIds.push(result.id);
     } else if (result.dedupeKey) {
@@ -318,7 +327,7 @@ async function runGeneratedOutputs(
   }
 
   for (const recommendation of evaluation.recommendations) {
-    const result = await createRecommendationWithClient(client, recommendation);
+    const result = await createRecommendationWithClient(client, recommendation, generatedAt);
     if (result.created) {
       createdRecommendationIds.push(result.id);
     } else if (result.dedupeKey) {
@@ -334,6 +343,7 @@ async function runGeneratedOutputs(
       leadId,
       explanation: `Action generation skipped because ${reasonCode}.`,
       reasonCodes: [reasonCode],
+      createdAt: generatedAt,
       afterState: {
         skippedReasonCode: reasonCode,
       },
@@ -343,7 +353,7 @@ async function runGeneratedOutputs(
   return {
     entityType,
     entityId,
-    generatedAtIso: new Date().toISOString(),
+    generatedAtIso: generatedAt.toISOString(),
     createdTaskIds,
     createdRecommendationIds,
     preventedDuplicateKeys,
@@ -798,6 +808,7 @@ export async function generateActionsForLeadWithClient(
     context.templateContext.accountId,
     leadId,
     evaluation,
+    context.now,
   );
 
   await syncPrimaryLeadSlaTask(client, leadId, context.routingDecision?.id ?? null);
@@ -831,6 +842,7 @@ export async function generateActionsForAccountWithClient(
     accountId,
     null,
     evaluation,
+    context.now,
   );
 }
 
@@ -843,9 +855,11 @@ export async function generateActionsForAccount(
 
 export async function createManualTask(
   input: CreateTaskRequest,
+  options: { createdAt?: Date } = {},
 ) {
   return db.$transaction(async (client) => {
     const dueAt = new Date(input.dueAtIso);
+    const createdAt = options.createdAt ?? new Date();
 
     const task = await client.task.create({
       data: {
@@ -886,6 +900,7 @@ export async function createManualTask(
           dueAtIso: dueAt.toISOString(),
           dedupeKey: null,
         }),
+        createdAt,
         completedAt:
           input.status === TaskStatus.COMPLETED ? dueAt : null,
       },
@@ -907,6 +922,7 @@ export async function createManualTask(
       actorId: null,
       actorName: "Workspace operator",
       reasonCodes: ["manual_task_created"],
+      createdAt,
       afterState: {
         actionType: ActionType.MANUAL_CUSTOM,
         actionCategory: ActionCategory.MANUAL,

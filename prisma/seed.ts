@@ -21,6 +21,7 @@ import {
   generateActionsForAccount,
   generateActionsForLead,
 } from "../lib/actions";
+import { recordRuleConfigChanged } from "../lib/audit/rules";
 import type { IngestSignalInput } from "../lib/contracts/signals";
 import { ingestSignal } from "../lib/data/signals";
 import { db } from "../lib/db";
@@ -1604,6 +1605,11 @@ async function createTrackedTaskScenario(params: {
     dueAtIso: params.dueAt.toISOString(),
     title: params.title,
     description: params.description,
+  }, {
+    createdAt: addMinutes(
+      params.dueAt,
+      -1 * (params.targetMinutes ?? 15),
+    ),
   });
 
   await assignSlaForTask(taskId, {
@@ -1990,6 +1996,37 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     ],
   });
 
+  await recordRuleConfigChanged(prisma, {
+    ruleConfigId: "rule_scoring_v1",
+    ruleType: "scoring",
+    version: "scoring/v1",
+    explanation: "Activated the scoring/v1 rule set for deterministic GTM demo scoring.",
+    reasonCodes: ["activate_scoring_v1_for_demo_seed"],
+    createdAt: subHours(baseDate, 36),
+    actorName: "Seed Pipeline",
+    afterState: {
+      isActive: true,
+      thresholdCount: 4,
+      componentCapCount: 6,
+    },
+  });
+  await recordRuleConfigChanged(prisma, {
+    ruleConfigId: "rule_routing_2026_03",
+    ruleType: "routing",
+    version: "routing/v1",
+    explanation: "Activated the routing/v1 rule set for deterministic GTM demo routing and SLA policy coverage.",
+    reasonCodes: ["activate_routing_v1_for_demo_seed"],
+    createdAt: subHours(baseDate, 35),
+    actorName: "Seed Pipeline",
+    afterState: {
+      isActive: true,
+      precedenceCount: 6,
+      territoryRuleCount: 9,
+      roundRobinPoolCount: 12,
+      strategicOverrideCount: 1,
+    },
+  });
+
   const leads: SeededLead[] = accounts.flatMap((account, index) => {
     const primaryScore = clampScore(
       account.overallScore + (account.status === AccountStatus.HOT ? 2 : -4 + (index % 6)),
@@ -2093,25 +2130,25 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
   );
 
   await setAccountManualPriorityBoost("acc_signalnest", 3, {
-    actorType: "ops_user",
+    actorType: "user",
     actorName: "Priya Singh",
     note: "Prioritized after product-qualified expansion interest.",
     effectiveAtIso: addMinutes(baseDate, 20).toISOString(),
   });
   await setLeadManualPriorityBoost("acc_summitflow_finance_lead_01", 5, {
-    actorType: "ops_user",
+    actorType: "user",
     actorName: "Amelia Ross",
     note: "Escalated because pricing activity and live meeting intent converged.",
     effectiveAtIso: addMinutes(baseDate, 21).toISOString(),
   });
   await setLeadManualPriorityBoost("acc_harborpoint_lead_01", 5, {
-    actorType: "ops_user",
+    actorType: "user",
     actorName: "Elena Morales",
     note: "Moved into the executive queue after the direct meeting request.",
     effectiveAtIso: addMinutes(baseDate, 22).toISOString(),
   });
   await setLeadManualPriorityBoost("acc_ironpeak_lead_01", 5, {
-    actorType: "ops_user",
+    actorType: "user",
     actorName: "Elena Morales",
     note: "Boosted after product activation and stakeholder follow-up aligned.",
     effectiveAtIso: addMinutes(baseDate, 23).toISOString(),
@@ -2336,6 +2373,8 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     status: TaskStatus.COMPLETED,
     title: "Capture Northstar onboarding notes",
     description: "Close out the onboarding review and store the account context for the next AE touch.",
+  }, {
+    createdAt: subHours(baseDate, 20),
   });
   await createManualTask({
     leadId: "acc_cedarbridge_health_lead_01",
@@ -2347,6 +2386,8 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     status: TaskStatus.COMPLETED,
     title: "Send recap to CedarBridge Health",
     description: "Send the operator recap and mark the follow-up thread as complete.",
+  }, {
+    createdAt: subHours(baseDate, 16),
   });
   await createManualTask({
     accountId: "acc_frontier_retail",
@@ -2357,6 +2398,8 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     status: TaskStatus.IN_PROGRESS,
     title: "Research APAC expansion signals for Frontier Retail",
     description: "Validate stakeholder changes and confirm whether the current evaluation is regional or global.",
+  }, {
+    createdAt: addHours(baseDate, 60),
   });
   await createManualTask({
     accountId: "acc_meridian_freight",
@@ -2366,6 +2409,8 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     dueAtIso: addHours(baseDate, 96).toISOString(),
     title: "Review coverage plan for Meridian Freight Cloud",
     description: "Confirm owner coverage, open dependencies, and the next-best action for the account plan.",
+  }, {
+    createdAt: addHours(baseDate, 64),
   });
 
   const slaSeedNow = new Date();

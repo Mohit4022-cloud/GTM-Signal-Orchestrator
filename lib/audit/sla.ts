@@ -15,6 +15,7 @@ type SlaAuditPayload = {
   reasonCodes?: string[];
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
+  createdAt?: Date;
 };
 
 const ACTOR_TYPE = "system";
@@ -39,6 +40,7 @@ async function createSlaAuditLog(client: SlaAuditClient, payload: SlaAuditPayloa
     reasonCodes: payload.reasonCodes ?? [],
     before: payload.beforeState,
     after: payload.afterState,
+    createdAt: payload.createdAt,
   });
 }
 
@@ -52,6 +54,7 @@ export function recordSlaAssigned(
     explanation: string;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createSlaAuditLog(client, {
@@ -63,6 +66,7 @@ export function recordSlaAssigned(
     leadId: params.leadId,
     explanation: params.explanation,
     reasonCodes: params.reasonCodes ?? [],
+    createdAt: params.createdAt,
     afterState: params.afterState,
   });
 }
@@ -78,6 +82,7 @@ export function recordSlaBreached(
     beforeState: Record<string, unknown>;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createSlaAuditLog(client, {
@@ -91,6 +96,7 @@ export function recordSlaBreached(
     reasonCodes: params.reasonCodes ?? [],
     beforeState: params.beforeState,
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }
 
@@ -105,6 +111,7 @@ export function recordSlaResolved(
     beforeState: Record<string, unknown>;
     afterState: Record<string, unknown>;
     reasonCodes?: string[];
+    createdAt?: Date;
   },
 ) {
   return createSlaAuditLog(client, {
@@ -118,5 +125,6 @@ export function recordSlaResolved(
     reasonCodes: params.reasonCodes ?? [],
     beforeState: params.beforeState,
     afterState: params.afterState,
+    createdAt: params.createdAt,
   });
 }

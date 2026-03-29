@@ -570,13 +570,16 @@ model AuditLog {
   id          String         @id
   eventType   AuditEventType
   actorType   String
+  actorId     String?
   actorName   String
+  action      String         @default("legacy_event")
   entityType  String
   entityId    String
   accountId   String?
   leadId      String?
   beforeState Json?
   afterState  Json?
+  reasonCodesJson Json       @default("[]")
   explanation String
   createdAt   DateTime       @default(now())
   account     Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
@@ -585,6 +588,7 @@ model AuditLog {
   @@index([accountId, createdAt])
   @@index([leadId, createdAt])
   @@index([eventType, createdAt])
+  @@index([entityType, entityId, createdAt])
 }
 
 model SlaEvent {

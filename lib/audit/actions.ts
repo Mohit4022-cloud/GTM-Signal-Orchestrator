@@ -1,16 +1,18 @@
-import { randomUUID } from "node:crypto";
+import { AuditEventType, type Prisma, type PrismaClient } from "@prisma/client";
 
-import { AuditEventType, Prisma, type PrismaClient } from "@prisma/client";
+import { createAuditLog } from "@/lib/audit/shared";
 
 type ActionAuditClient = Prisma.TransactionClient | PrismaClient;
 
 type ActionAuditPayload = {
   eventType: AuditEventType;
+  action: string;
   entityType: string;
   entityId: string;
   accountId?: string | null;
   leadId?: string | null;
   explanation: string;
+  reasonCodes?: string[];
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
 };
@@ -19,24 +21,24 @@ async function createActionAuditLog(
   client: ActionAuditClient,
   payload: ActionAuditPayload,
 ) {
-  return client.auditLog.create({
-    data: {
-      id: randomUUID(),
-      eventType: payload.eventType,
-      actorType: "system",
-      actorName: "Action Engine",
-      entityType: payload.entityType,
-      entityId: payload.entityId,
-      accountId: payload.accountId ?? null,
-      leadId: payload.leadId ?? null,
-      beforeState: payload.beforeState
-        ? (payload.beforeState as Prisma.InputJsonValue)
-        : undefined,
-      afterState: payload.afterState
-        ? (payload.afterState as Prisma.InputJsonValue)
-        : undefined,
-      explanation: payload.explanation,
+  return createAuditLog(client, {
+    eventType: payload.eventType,
+    action: payload.action,
+    actor: {
+      type: "system",
+      id: null,
+      name: "Action Engine",
     },
+    entity: {
+      type: payload.entityType,
+      id: payload.entityId,
+      accountId: payload.accountId,
+      leadId: payload.leadId,
+    },
+    explanation: payload.explanation,
+    reasonCodes: payload.reasonCodes ?? [],
+    before: payload.beforeState,
+    after: payload.afterState,
   });
 }
 
@@ -54,11 +56,13 @@ export function recordTaskCreated(
 ) {
   return createActionAuditLog(client, {
     eventType: AuditEventType.TASK_CREATED,
+    action: "task_created",
     entityType: "task",
     entityId: params.taskId,
     accountId: params.accountId,
     leadId: params.leadId,
     explanation: params.explanation,
+    reasonCodes: [],
     afterState: {
       ...params.afterState,
       sourceEntityType: params.entityType,
@@ -82,11 +86,13 @@ export function recordTaskUpdated(
 ) {
   return createActionAuditLog(client, {
     eventType: AuditEventType.TASK_UPDATED,
+    action: "task_updated",
     entityType: "task",
     entityId: params.taskId,
     accountId: params.accountId,
     leadId: params.leadId,
     explanation: params.explanation,
+    reasonCodes: [],
     beforeState: {
       ...params.beforeState,
       sourceEntityType: params.entityType,
@@ -110,11 +116,13 @@ export function recordActionRecommendationCreated(
 ) {
   return createActionAuditLog(client, {
     eventType: AuditEventType.ACTION_RECOMMENDATION_CREATED,
+    action: "action_recommendation_created",
     entityType: "action_recommendation",
     entityId: params.recommendationId,
     accountId: params.accountId,
     leadId: params.leadId,
     explanation: params.explanation,
+    reasonCodes: [],
     afterState: {
       ...params.afterState,
       sourceEntityType: params.entityType,
@@ -136,11 +144,13 @@ export function recordDuplicateActionPrevented(
 ) {
   return createActionAuditLog(client, {
     eventType: AuditEventType.DUPLICATE_ACTION_PREVENTED,
+    action: "duplicate_action_prevented",
     entityType: params.entityType,
     entityId: params.entityId,
     accountId: params.accountId,
     leadId: params.leadId,
     explanation: params.explanation,
+    reasonCodes: [],
     afterState: params.afterState,
   });
 }
@@ -158,11 +168,13 @@ export function recordActionGenerationSkipped(
 ) {
   return createActionAuditLog(client, {
     eventType: AuditEventType.ACTION_GENERATION_SKIPPED,
+    action: "action_generation_skipped",
     entityType: params.entityType,
     entityId: params.entityId,
     accountId: params.accountId,
     leadId: params.leadId,
     explanation: params.explanation,
+    reasonCodes: [],
     afterState: params.afterState,
   });
 }

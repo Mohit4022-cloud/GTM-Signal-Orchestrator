@@ -1,12 +1,11 @@
-import { randomUUID } from "node:crypto";
-
-import { AuditEventType, Prisma, type PrismaClient } from "@prisma/client";
+import { AuditEventType, type Prisma, type PrismaClient } from "@prisma/client";
 
 import type {
   CanonicalSignalEventContract,
   IdentityResolutionCode,
   JsonRecord,
 } from "@/lib/contracts/signals";
+import { createAuditLog } from "@/lib/audit/shared";
 
 type SignalAuditClient = Prisma.TransactionClient | PrismaClient;
 
@@ -16,6 +15,8 @@ type AuditPayload = {
   leadId?: string | null;
   explanation: string;
   eventType: AuditEventType;
+  action: string;
+  reasonCodes?: string[];
   beforeState?: JsonRecord | null;
   afterState?: JsonRecord | null;
 };
@@ -25,24 +26,24 @@ const ACTOR_NAME = "Signal Pipeline";
 const ENTITY_TYPE = "signal_event";
 
 async function createSignalAuditLog(client: SignalAuditClient, payload: AuditPayload) {
-  return client.auditLog.create({
-    data: {
-      id: randomUUID(),
-      eventType: payload.eventType,
-      actorType: ACTOR_TYPE,
-      actorName: ACTOR_NAME,
-      entityType: ENTITY_TYPE,
-      entityId: payload.signalId,
-      accountId: payload.accountId ?? null,
-      leadId: payload.leadId ?? null,
-      beforeState: payload.beforeState
-        ? (payload.beforeState as Prisma.InputJsonValue)
-        : undefined,
-      afterState: payload.afterState
-        ? (payload.afterState as Prisma.InputJsonValue)
-        : undefined,
-      explanation: payload.explanation,
+  return createAuditLog(client, {
+    eventType: payload.eventType,
+    action: payload.action,
+    actor: {
+      type: ACTOR_TYPE,
+      id: null,
+      name: ACTOR_NAME,
     },
+    entity: {
+      type: ENTITY_TYPE,
+      id: payload.signalId,
+      accountId: payload.accountId,
+      leadId: payload.leadId,
+    },
+    explanation: payload.explanation,
+    reasonCodes: payload.reasonCodes ?? [],
+    before: payload.beforeState,
+    after: payload.afterState,
   });
 }
 
@@ -60,7 +61,9 @@ export function recordSignalIngested(
     accountId: params.accountId,
     leadId: params.leadId,
     eventType: AuditEventType.SIGNAL_INGESTED,
+    action: "signal_ingested",
     explanation: "Signal ingested into the canonical pipeline.",
+    reasonCodes: [],
     afterState: params.rawPayload,
   });
 }
@@ -79,7 +82,9 @@ export function recordSignalNormalized(
     accountId: params.accountId,
     leadId: params.leadId,
     eventType: AuditEventType.SIGNAL_NORMALIZED,
+    action: "signal_normalized",
     explanation: "Signal normalized into the canonical event model.",
+    reasonCodes: [],
     afterState: params.normalizedEvent as JsonRecord,
   });
 }
@@ -100,7 +105,9 @@ export function recordIdentityMatched(
     accountId: params.accountId,
     leadId: params.leadId,
     eventType: AuditEventType.IDENTITY_RESOLVED,
+    action: "identity_resolved",
     explanation: params.explanation,
+    reasonCodes: params.reasonCodes,
     afterState: {
       accountId: params.accountId ?? null,
       contactId: params.contactId ?? null,
@@ -120,7 +127,9 @@ export function recordSignalUnmatchedQueued(
   return createSignalAuditLog(client, {
     signalId: params.signalId,
     eventType: AuditEventType.SIGNAL_UNMATCHED_QUEUED,
+    action: "signal_unmatched_queued",
     explanation: params.explanation,
+    reasonCodes: params.reasonCodes,
     afterState: {
       queue: "unmatched",
       reasonCodes: params.reasonCodes,
@@ -139,7 +148,9 @@ export function recordSignalDuplicateSkipped(
   return createSignalAuditLog(client, {
     signalId: params.signalId,
     eventType: AuditEventType.SIGNAL_DUPLICATE_SKIPPED,
+    action: "signal_duplicate_skipped",
     explanation: `Signal skipped because dedupe key ${params.dedupeKey} already exists on ${params.existingSignalId}.`,
+    reasonCodes: [],
     afterState: {
       existingSignalId: params.existingSignalId,
       dedupeKey: params.dedupeKey,
@@ -158,7 +169,9 @@ export function recordSignalIngestError(
   return createSignalAuditLog(client, {
     signalId: params.signalId,
     eventType: AuditEventType.SIGNAL_INGEST_ERROR,
+    action: "signal_ingest_error",
     explanation: `Signal ingest failed: ${params.errorMessage}`,
+    reasonCodes: [],
     afterState: {
       rawPayload: params.rawPayload,
       errorMessage: params.errorMessage,

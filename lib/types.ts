@@ -25,6 +25,18 @@ export type ModulePlaceholderConfig = {
 };
 
 export type {
+  AuditActorContract,
+  AuditActorType,
+  AuditEntitySummaryContract,
+  AuditLogEntryContract,
+  AuditLogQueryOptions,
+  AuditReasonSummaryContract,
+  AuditStateSummaryContract,
+  AuditWriteActor,
+  AuditWriteEntity,
+  AuditWritePayload,
+} from "@/lib/contracts/audit";
+export type {
   ActionEntityType,
   ActionExplanationContract,
   ActionGenerationRunContract,

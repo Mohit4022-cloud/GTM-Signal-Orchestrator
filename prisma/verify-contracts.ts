@@ -11,6 +11,10 @@ import {
   getRecentSignals as getDashboardRecentSignals,
 } from "../lib/queries/dashboard";
 import {
+  getDashboardConversionView,
+  getDashboardSlaView,
+} from "../lib/data/dashboard";
+import {
   getAccountTimeline,
   getRecentSignals,
   getSignalById,
@@ -59,6 +63,8 @@ async function main() {
     taskSummary,
     recentAuditEntries,
     hotRecentlyRoutedLeads,
+    dashboardSlaView,
+    dashboardConversionView,
   ] = await Promise.all([
     getDashboardSummary(),
     getHotAccounts(),
@@ -74,6 +80,8 @@ async function main() {
     getDashboardTaskSummary(),
     getRecentAuditEvents(10),
     getLeadQueue({ hot: true, recentlyRouted: true }),
+    getDashboardSlaView(),
+    getDashboardConversionView(),
   ]);
 
   invariant(
@@ -88,15 +96,59 @@ async function main() {
     summary.signalVolume14d.length === 14,
     `Expected 14 trend points, found ${summary.signalVolume14d.length}.`,
   );
+  invariant(summary.demoMeta.dataMode === "demo_sample", "Dashboard summary must be labeled as demo sample data.");
+  invariant(
+    summary.signalVolumeSeries.points.length === 14,
+    `Expected 14 chart points, found ${summary.signalVolumeSeries.points.length}.`,
+  );
+  invariant(
+    summary.signalVolumeSeries.startDate === summary.appliedFilters.startDate &&
+      summary.signalVolumeSeries.endDate === summary.appliedFilters.endDate,
+    "Dashboard summary should align chart windows to the applied filters.",
+  );
   invariant(
     summary.slaHealth.length === 3,
     `Expected 3 SLA health points, found ${summary.slaHealth.length}.`,
   );
   invariant(Boolean(summary.slaSummary.asOfIso), "Dashboard summary must include SLA summary metadata.");
   invariant(
-    typeof summary.slaSummary.leadMetrics.openTrackedCount === "number" &&
+      typeof summary.slaSummary.leadMetrics.openTrackedCount === "number" &&
       typeof summary.slaSummary.taskMetrics.openTrackedCount === "number",
     "Dashboard summary must expose typed lead and task SLA metrics.",
+  );
+  invariant(
+    summary.routingReasonDistribution.length > 0,
+    "Dashboard summary must expose routing reason distribution rows.",
+  );
+  invariant(
+    summary.conversionByScoreBucket.length === 4,
+    "Dashboard summary must expose all four score buckets.",
+  );
+  invariant(
+    summary.tasksDueToday.totalCount > 0,
+    "Dashboard summary must expose tasks due in the seeded reference day.",
+  );
+  invariant(
+    summary.recentRoutingDecisions.length > 0,
+    "Dashboard summary must expose recent routing decisions for the dashboard feed.",
+  );
+  invariant(
+    summary.unmatchedSignalsPreview.totalCount > 0,
+    "Dashboard summary must expose unmatched signal preview rows.",
+  );
+  invariant(
+    summary.benchmarkMetrics.length >= 4,
+    "Dashboard summary must expose benchmark metrics for the recruiter-facing demo story.",
+  );
+  invariant(
+    summary.benchmarkMetrics.every((metric) =>
+      metric.method === "derived"
+        ? Boolean(metric.formula) &&
+          typeof metric.numerator === "number" &&
+          typeof metric.denominator === "number"
+        : Boolean(metric.benchmarkLabel) && metric.scenarioLabels.length > 0,
+    ),
+    "Dashboard benchmark metrics must be traceable as derived or explicitly labeled scenario benchmarks.",
   );
 
   invariant(hotAccounts.length > 0, "Expected at least one hot account.");
@@ -111,7 +163,9 @@ async function main() {
         (account.temperature === Temperature.HOT || account.temperature === Temperature.URGENT) &&
         Boolean(account.temperatureLabel) &&
         Boolean(account.scoringVersion) &&
-        account.scoreLastComputedAtIso !== undefined,
+        account.scoreLastComputedAtIso !== undefined &&
+        account.headlineReason.length > 0 &&
+        typeof account.openTaskCount === "number",
     ),
     "Hot accounts must expose temperature and scoring snapshot metadata.",
   );
@@ -152,6 +206,22 @@ async function main() {
   invariant(
     dashboardRecentSignals.some((signal) => signal.isUnmatched),
     "Expected at least one unmatched signal in the dashboard recent signal feed.",
+  );
+
+  invariant(
+    dashboardSlaView.demoMeta.dataMode === "demo_sample" &&
+      dashboardSlaView.summary.leadMetrics.openTrackedCount >= 1 &&
+      dashboardSlaView.complianceTrend.length > 0 &&
+      dashboardSlaView.tasksDueToday.totalCount > 0,
+    "Dashboard SLA view must expose demo-safe trend, summary, and task due contracts.",
+  );
+  invariant(
+    dashboardConversionView.demoMeta.dataMode === "demo_sample" &&
+      dashboardConversionView.conversionByScoreBucket.length === 4 &&
+      dashboardConversionView.scoreDistribution.accounts.length === 4 &&
+      dashboardConversionView.scoreDistribution.leads.length === 4 &&
+      dashboardConversionView.pipelineStageConversionBySegment.length > 0,
+    "Dashboard conversion view must expose stable conversion, distribution, and pipeline contracts.",
   );
 
   invariant(unmatchedSignals.length >= 10, `Expected at least 10 unmatched signals, found ${unmatchedSignals.length}.`);

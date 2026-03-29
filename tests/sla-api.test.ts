@@ -21,10 +21,24 @@ test("GET /api/dashboard/sla returns dashboard-safe SLA metrics", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(typeof payload.asOfIso, "string");
-  assert.ok(payload.leadMetrics.openTrackedCount >= 1);
-  assert.ok(payload.leadMetrics.breachedCount >= 1);
-  assert.ok(payload.taskMetrics.openTrackedCount >= 1);
-  assert.ok(payload.aggregateMetrics.overdueCount >= 1);
+  assert.equal(payload.demoMeta.dataMode, "demo_sample");
+  assert.ok(payload.summary.leadMetrics.openTrackedCount >= 1);
+  assert.ok(payload.summary.leadMetrics.breachedCount >= 1);
+  assert.ok(payload.summary.taskMetrics.openTrackedCount >= 1);
+  assert.ok(payload.summary.aggregateMetrics.overdueCount >= 1);
+  assert.ok(Array.isArray(payload.complianceTrend));
+  assert.ok(Array.isArray(payload.breachedLeads));
+  assert.ok(payload.tasksDueToday.totalCount >= 1);
+});
+
+test("GET /api/dashboard/sla returns 400 for invalid filters", async () => {
+  const response = await dashboardSlaGet(
+    new Request("http://localhost/api/dashboard/sla?startDate=2026-03-30&endDate=2026-03-29"),
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.code, "DASHBOARD_SLA_VALIDATION_ERROR");
 });
 
 test("GET /api/dashboard/sla returns 500 for forced failures", async () => {

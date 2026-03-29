@@ -1,79 +1,71 @@
-# Open GTM Signal Orchestrator
+# GTM Signal Orchestrator
 
-[![CI](https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+## One-line Summary
 
-Open-source GTM engineering workspace for ingesting buyer signals, scoring accounts, routing leads, and powering operator workflows.
+Deterministic GTM signal ingestion, scoring, routing, SLA tracking, and operator workflows in a local-first Next.js workspace.
 
-## Why This Project Exists
+## Why This Matters In GTM
 
-Revenue teams lose momentum when intent data, product signals, ownership logic, and operator follow-up live in separate systems. Open GTM Signal Orchestrator pulls those workflows into a single local-first workspace so GTM engineers and revenue teams can inspect signal flow, model routing decisions, and build against stable data contracts.
+Revenue systems break down when signal capture, identity resolution, lead routing, and follow-up accountability live in different places. This project keeps trust-critical decisions deterministic and inspectable: every score change, routing outcome, SLA deadline, and generated task is persisted with reason codes and audit history.
 
-This repo is designed to be useful in two ways:
+## Core Capabilities
 
-- as a practical open-source foundation for GTM engineering experiments and internal tooling
-- as a portfolio-grade reference for deterministic signal ingestion, account scoring, and operator workflow orchestration
+- Ingest signals through `POST /api/signals` or batch CSV upload through `POST /api/signals/upload`.
+- Normalize payloads, deduplicate events, and resolve accounts and contacts before decisions are made.
+- Recompute account and lead scores with stable component caps, canonical reason codes, and persisted score history.
+- Route active leads through deterministic precedence rules with queue assignment, owner fallback, and explicit routing explanations.
+- Assign lead and task SLAs with concrete deadlines, tracked states, and breach detection.
+- Generate operator tasks and action recommendations with linked trigger metadata and audit trails.
+- Serve read-only operator views for `/dashboard`, `/accounts`, `/accounts/[id]`, `/leads`, and `/routing-simulator`.
+- Layer optional AI summaries and action notes on top of the deterministic system without changing the source-of-truth decision path.
 
-## Who It Is For
-
-- GTM engineers building signal activation layers
-- RevOps and Sales Ops teams modeling routing and SLA workflows
-- Marketing Ops teams exploring account readiness and intent scoring
-- engineers who want a local-first demo system with realistic GTM data contracts
-
-## What Works Today
-
-- deterministic seeded GTM workspace backed by Prisma and SQLite
-- typed server-side contracts for dashboard, accounts list, and account detail views
-- deterministic account and lead scoring with persisted score snapshots, score history, and reason codes
-- implemented operator views for `/dashboard`, `/accounts`, and `/accounts/[id]`
-- signal ingestion APIs at `/api/signals` and `/api/signals/upload`
-- optional provider-agnostic AI assist APIs for account summaries and lead action notes with deterministic fallback output
-- realistic demo data for accounts, contacts, leads, routing decisions, tasks, signal timelines, score history, and audit logs
-- offline-first local development with no external services required
-
-## Core Workflows And Architecture
-
-The current foundation centers on deterministic backend contracts and realistic data flow.
+## Architecture Diagram
 
 ```mermaid
 flowchart LR
-  A["Signal ingestion"] --> B["Normalization"]
+  A["Signal APIs and CSV upload"] --> B["Normalization and dedupe"]
   B --> C["Identity resolution"]
-  C --> D["Scoring and routing"]
-  D --> E["Account, lead, and task workflows"]
+  C --> D["Account and lead score recompute"]
+  D --> E["Routing policy engine"]
+  E --> F["SLA assignment and task generation"]
+  F --> G["Audit log and typed query contracts"]
+  G --> H["Dashboard, Accounts, Leads, Routing Simulator"]
+  G --> I["Optional AI summaries and notes"]
 ```
 
-### Current foundations
+Expanded notes: [docs/architecture.md](/Users/mohit/GTM-Signal-Orchestrator/docs/architecture.md)
 
-- Next.js App Router for the workspace shell and route structure
-- Prisma 7 with SQLite for local-first data modeling and query helpers
-- deterministic seed scripts and contract verification scripts for reproducible demos
-- stable frontend-facing contract functions:
-  - `getDashboardSummary()`
-  - `getHotAccounts()`
-  - `getRecentSignals()`
-  - `getAccounts(filters?)`
-  - `getAccountById(id)`
-- AI assist contracts:
-  - `generateAccountSummary(accountId, options?)`
-  - `generateActionNote(leadId, options?)`
-- scoring-specific backend contracts:
-  - `getAccountScoreBreakdown(accountId)`
-  - `getLeadScoreBreakdown(leadId)`
-  - `getScoreHistoryForEntity(entityType, entityId, opts?)`
-  - `recomputeAccountScore(accountId, trigger?)`
-  - `recomputeLeadScore(leadId, trigger?)`
-  - `recomputeScoresForSignal(signalId, trigger?)`
+## Demo Screenshots / GIFs
 
-### Stack
+- `docs/demo-assets/01-dashboard-overview.png` - dashboard KPI cards, SLA health, and routing feed.
+- `docs/demo-assets/02-request-demo-ingest.png` - terminal or API client posting a `request_demo` signal.
+- `docs/demo-assets/03-atlas-grid-account-detail.png` - Atlas Grid account detail with score, tasks, and audit sections.
+- `docs/demo-assets/04-routing-simulator.png` - routing simulator result with precedence explanation.
+- `docs/demo-assets/05-dashboard-closeout.png` - closing dashboard frame with measurable outcomes visible.
+- `docs/demo-assets/urgent-inbound-flow.gif` - optional short loop of the ingest-to-account-detail flow.
+
+Capture guidance: [docs/screenshots.md](/Users/mohit/GTM-Signal-Orchestrator/docs/screenshots.md)
+
+## Example Workflow
+
+1. Open `/dashboard` to show hot account count, SLA health, and recent routing decisions.
+2. Post a `request_demo` signal to `POST /api/signals` for the Atlas Grid scenario.
+3. Open `/accounts/acc_atlas_grid` to inspect the score breakdown, open tasks, and audit log.
+4. Call `GET /api/leads/acc_atlas_grid_lead_01` to show the routed owner, queue, and SLA deadline for the lead contract.
+5. Open `/routing-simulator` to show how the same policy engine explains precedence and fallback behavior without writing data.
+
+Demo walkthrough: [docs/demo-script.md](/Users/mohit/GTM-Signal-Orchestrator/docs/demo-script.md)
+
+## Tech Stack
 
 - Next.js 16 App Router
 - TypeScript
-- Tailwind CSS 4
 - Prisma 7
 - SQLite with `better-sqlite3`
+- React 19
+- Tailwind CSS 4
 - Recharts
+- Node test runner with `tsx`
 
 ## Local Setup
 
@@ -83,128 +75,127 @@ flowchart LR
    npm install
    ```
 
-2. Apply the Prisma migrations.
+2. Validate the Prisma schema.
+
+   ```bash
+   npm run db:validate
+   ```
+
+3. Apply migrations and load the seeded workspace.
 
    ```bash
    npm run db:migrate
-   ```
-
-3. Seed the local workspace.
-
-   ```bash
    npm run db:seed
    ```
 
-4. Start the development server.
+4. Start the app.
 
    ```bash
    npm run dev
    ```
 
-5. Optional: configure AI assist if you want live model output instead of deterministic fallback output.
+5. Open [http://localhost:3000/dashboard](http://localhost:3000/dashboard).
 
-   ```bash
-   AI_PROVIDER="openai"
-   OPENAI_API_KEY="your-key"
-   OPENAI_MODEL="your-model"
-   ```
+Optional AI provider configuration:
 
-6. Open [http://localhost:3000/dashboard](http://localhost:3000/dashboard).
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=your-key
+OPENAI_MODEL=your-model
+```
 
-### Useful scripts
+Useful verification commands:
 
-- `npm run dev` for local development
-- `npm run lint` for ESLint
-- `npm run typecheck` for TypeScript validation
-- `npm test` for the current Node test suite
-- `npm run build` for a production build
-- `npm run db:migrate` to apply local Prisma migrations
-- `npm run db:seed` to reset demo data
-- `npm run db:verify-seed` to verify deterministic seed integrity
-- `npm run db:verify-contracts` to sanity-check frontend-facing contracts
-- `npm run db:verify-signal-pipeline` to validate the signal ingestion workflow
+- `npm test`
+- `npm run db:verify-contracts`
+- `npm run db:verify-routing`
+- `npm run db:verify-signal-pipeline`
+- `npm run db:verify-sla`
 
-## Optional AI Assist
+## Sample Data
 
-The Phase 5 AI assist layer is read-only and grounded in the existing deterministic system state.
+The fresh seed creates a reproducible demo workspace with:
 
-- `POST /api/ai/account-summary/:accountId`
-- `POST /api/ai/action-note/:leadId`
-- if `AI_PROVIDER=noop` or provider config is missing, both endpoints still return `200` with stable degraded contracts, deterministic fallback text, and `status="unavailable"`
-- deterministic scoring, routing, task generation, SLA tracking, and audit logic remain the source of truth
-
-## Seeded Demo Workspace
-
-The seed is deterministic and currently creates:
-
-- 8 users
+- 12 users
 - 20 accounts
 - 40 contacts
 - 30 leads
-- 120+ signals
-- 40 tasks
-- 30 routing decisions
-- persisted account and lead score history with reason codes and trigger metadata
-- persisted audit logs for signal ingestion, scoring recomputes, threshold crossings, routing, and manual overrides
+- 120+ signal events
+- 30+ routing decisions
+- seeded tasks, action recommendations, score history, SLA events, and audit logs
 
-Useful validation paths after seeding:
+Canonical seeded scenarios:
 
-- `/dashboard`
-- `/accounts`
-- `/accounts/acc_summitflow_finance`
-- `/accounts/acc_ironpeak`
+- Atlas Grid Systems - hot inbound `request_demo` flow with routing, SLA tracking, follow-up tasks, and audit history.
+- BeaconOps Partners - pricing and product-usage signals that drive score and routing changes.
+- Unmatched queue - 10+ unmatched signals for ops review and identity triage.
 
-Seeded scoring stories include:
+## How Scoring Works
 
-- pricing-cluster lift for `acc_summitflow_finance`
-- product-usage lift for `acc_signalnest`
-- inactivity decay for `acc_frontier_retail`
-- urgent lead scenarios across SummitFlow, HarborPoint, and Iron Peak
+Scoring is deterministic and component-based. Account and lead scores are built from the same capped component model, then persisted as snapshots and score-history rows with machine-readable reason codes and display-ready reason details.
 
-## Implemented Routes And APIs
+- Account components: `fit`, `intent`, `engagement`, `recency`, `productUsage`, `manualPriority`.
+- Default component caps are fixed in code: fit `25`, intent `20`, engagement `25`, recency `10`, product usage `15`, manual priority `5`.
+- Lead scoring inherits part of the parent account context instead of blindly copying account scores. The fit inheritance path is explicitly tested and discounted.
+- Every persisted recompute stores ordered reason metadata so the UI and audit surfaces can explain why the score moved.
 
-### Implemented routes
+## How Routing Works
 
-- `/dashboard`
-- `/accounts`
-- `/accounts/[id]`
-- `/unmatched`
+Routing uses explicit precedence rules rather than opaque model output. The current engine evaluates the same policy path in production routing and in the simulator.
 
-### Available APIs
+- Named account owner
+- Existing owner preservation
+- Strategic tier override
+- Territory and segment rule
+- Round-robin pool fallback
+- Ops review queue when no eligible owner remains
 
-- `POST /api/signals`
-- `POST /api/signals/upload`
-- `POST /api/ai/account-summary/:accountId`
-- `POST /api/ai/action-note/:leadId`
+Each routing decision carries:
 
-### Placeholder workspace modules
+- decision type
+- assigned owner or explicit ops-review fallback
+- queue
+- normalized explanation text
+- top-level reason codes
+- evaluated policy-step diagnostics
+- SLA policy and due time
 
-- `/leads`
-- `/tasks`
-- `/signals`
-- `/routing-simulator`
-- `/settings`
+## AI Assist Design
 
-## Roadmap
+AI is optional and read-only.
 
-Planned next layers for the open-source project:
+- Provider selection is environment-driven and currently supports an OpenAI provider plus a deterministic noop fallback.
+- If AI is disabled or misconfigured, the APIs still return stable contracts with `status: "unavailable"` and deterministic fallback text.
+- AI output is limited to contextual summaries and action notes.
+- Deterministic scoring, routing, task generation, SLA tracking, and audit history remain the source of truth.
 
-- richer unmatched queue and signal triage workflows
-- deeper lead, task, and signals workspaces
-- routing simulator controls and rules inspection
-- configurable scoring policies
-- external system adapters beyond the current mock-source model
-- stronger contributor workflows and community examples
+## Tradeoffs And Future Improvements
 
-## Contributing And Community
+Implemented today:
 
-This repo is being opened up for GTM engineers and teams who want a realistic signal orchestration foundation they can inspect, extend, and adapt.
+- deterministic backend decisioning with typed contracts for the main operator views
+- API-driven signal ingestion and route-handler coverage for core flows
+- read-only UI surfaces that explain current state without exposing mutation-heavy admin tooling
 
-- Start with [CONTRIBUTING.md](./CONTRIBUTING.md)
-- Review the [Code of Conduct](./CODE_OF_CONDUCT.md)
-- Use the [Security Policy](./SECURITY.md) for private disclosures
-- Join or start product conversations in [GitHub Discussions](https://github.com/Mohit4022-cloud/GTM-Signal-Orchestrator/discussions)
+Future improvements:
 
-## License
+- richer unmatched-signal resolution workflows
+- deeper lead and task detail pages in the UI
+- policy editing and version history beyond the current simulator and rule snapshots
+- broader external adapters beyond the seeded local demo sources
 
-Released under the [MIT License](./LICENSE).
+## Business Impact Metrics
+
+These are demo scenario metrics derived from seeded sample data. They are useful for understanding the workflow, but they are not production claims.
+
+- Average speed-to-lead improvement: `91%` benchmarked against labeled demo scenarios.
+- Urgent-score meeting conversion lift: `211%` versus non-urgent score buckets.
+- Manual routing effort reduction: `97%` of routed workload stays out of the ops-review queue in the seeded window.
+- Unassigned inbound lead reduction: `97%` versus a manual baseline where new inbound work starts unassigned.
+
+Implementation details and test boundaries:
+
+- [docs/architecture.md](/Users/mohit/GTM-Signal-Orchestrator/docs/architecture.md)
+- [docs/demo-script.md](/Users/mohit/GTM-Signal-Orchestrator/docs/demo-script.md)
+- [docs/screenshots.md](/Users/mohit/GTM-Signal-Orchestrator/docs/screenshots.md)
+- [docs/testing.md](/Users/mohit/GTM-Signal-Orchestrator/docs/testing.md)

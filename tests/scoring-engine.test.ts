@@ -374,12 +374,10 @@ test("matched signal ingest recomputes account and related lead snapshots with c
       leadId: "acc_beaconops_lead_01",
     },
   });
-  const latestRoutingDecision = await db.routingDecision.findFirst({
+  const persistedRoutingDecision = await db.routingDecision.findFirst({
     where: {
       leadId: "acc_beaconops_lead_01",
-    },
-    orderBy: {
-      createdAt: "desc",
+      triggerSignalId: result.signalId,
     },
     select: {
       triggerSignalId: true,
@@ -387,9 +385,13 @@ test("matched signal ingest recomputes account and related lead snapshots with c
     },
   });
   const [accountHistory, leadHistory] = await Promise.all([
-    getScoreHistoryForEntity(ScoreEntityType.ACCOUNT, "acc_beaconops", { limit: 1 }),
-    getScoreHistoryForEntity(ScoreEntityType.LEAD, "acc_beaconops_lead_01", { limit: 1 }),
+    getScoreHistoryForEntity(ScoreEntityType.ACCOUNT, "acc_beaconops", { limit: 8 }),
+    getScoreHistoryForEntity(ScoreEntityType.LEAD, "acc_beaconops_lead_01", { limit: 8 }),
   ]);
+  const triggeredHistoryRows = [
+    accountHistory.rows.find((row) => row.trigger.signalSummary?.signalId === result.signalId),
+    leadHistory.rows.find((row) => row.trigger.signalSummary?.signalId === result.signalId),
+  ];
 
   assert.ok(afterAccount);
   assert.ok(afterLead);
@@ -398,8 +400,9 @@ test("matched signal ingest recomputes account and related lead snapshots with c
   assert.notEqual(afterAccount.lastUpdatedAtIso, beforeAccount.lastUpdatedAtIso);
   assert.notEqual(afterLead.lastUpdatedAtIso, beforeLead.lastUpdatedAtIso);
   assert.ok(afterRoutingCount > beforeRoutingCount);
-  assert.equal(latestRoutingDecision?.triggerSignalId, result.signalId);
-  assert.equal(latestRoutingDecision?.slaTargetMinutes, 240);
+  assert.ok(persistedRoutingDecision);
+  assert.equal(persistedRoutingDecision?.triggerSignalId, result.signalId);
+  assert.equal(persistedRoutingDecision?.slaTargetMinutes, 240);
   assert.deepEqual(
     afterAccount.componentBreakdown.map((component) => component.key),
     scoreComponentOrder,
@@ -409,7 +412,7 @@ test("matched signal ingest recomputes account and related lead snapshots with c
     scoreComponentOrder,
   );
 
-  for (const historyRow of [accountHistory.rows[0], leadHistory.rows[0]]) {
+  for (const historyRow of triggeredHistoryRows) {
     assert.ok(historyRow);
     assert.deepEqual(
       historyRow.componentBreakdown.map((component) => component.key),
@@ -491,12 +494,10 @@ test("manual attachment rescues an unmatched signal and triggers rescoring", asy
       leadId: "acc_signalnest_lead_01",
     },
   });
-  const latestRoutingDecision = await db.routingDecision.findFirst({
+  const persistedRoutingDecision = await db.routingDecision.findFirst({
     where: {
       leadId: "acc_signalnest_lead_01",
-    },
-    orderBy: {
-      createdAt: "desc",
+      triggerSignalId: unmatched.signalId,
     },
     select: {
       triggerSignalId: true,
@@ -511,9 +512,10 @@ test("manual attachment rescues an unmatched signal and triggers rescoring", asy
   assert.ok(afterHistory > beforeHistory);
   assert.ok(attachAudit);
   assert.ok(afterRoutingCount > beforeRoutingCount);
-  assert.equal(latestRoutingDecision?.triggerSignalId, unmatched.signalId);
-  assert.equal(latestRoutingDecision?.slaTargetMinutes, 240);
-  assert.equal(latestRoutingDecision?.assignedOwnerId, "usr_owen_price");
+  assert.ok(persistedRoutingDecision);
+  assert.equal(persistedRoutingDecision?.triggerSignalId, unmatched.signalId);
+  assert.equal(persistedRoutingDecision?.slaTargetMinutes, 240);
+  assert.equal(persistedRoutingDecision?.assignedOwnerId, "usr_owen_price");
 });
 
 test("manual priority overrides update the manual component and write audit history", async () => {

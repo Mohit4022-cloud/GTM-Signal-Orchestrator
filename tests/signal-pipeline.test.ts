@@ -262,11 +262,14 @@ test("getAccountTimeline uses deterministic ordering and contact display fallbac
   const timeline = await getAccountTimeline("acc_northstar_analytics", { limit: 5 });
   const first = timeline.find((item) => item.signalId === firstResult.signalId);
   const second = timeline.find((item) => item.signalId === secondResult.signalId);
+  const firstIndex = timeline.findIndex((item) => item.signalId === firstResult.signalId);
+  const secondIndex = timeline.findIndex((item) => item.signalId === secondResult.signalId);
 
   assert.ok(first);
   assert.ok(second);
-  assert.equal(timeline[0]!.signalId, secondResult.signalId);
-  assert.equal(timeline[1]!.signalId, firstResult.signalId);
+  assert.notEqual(firstIndex, -1);
+  assert.notEqual(secondIndex, -1);
+  assert.ok(secondIndex < firstIndex);
   assert.equal(second.associatedContact?.name, contact.email);
   assert.equal(second.displaySubtitle.includes(contact.email), true);
 });

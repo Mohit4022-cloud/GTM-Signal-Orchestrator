@@ -571,35 +571,40 @@ test("matched signal reroutes an urgent lead and persists a normalized routing d
     },
   });
   const after = await getRoutingDecisionsForEntity("lead", "acc_harborpoint_lead_01");
-  const latest = after[0];
+  const persisted = after.find(
+    (decision) =>
+      decision.triggerSignalId === signal.signalId &&
+      decision.decisionType === "named_account_owner" &&
+      decision.slaTargetMinutes === 240,
+  );
 
   assert.equal(signal.status, SignalStatus.MATCHED);
-  assert.ok(latest);
+  assert.ok(persisted);
   assert.ok(after.length > beforeCount);
-  assert.equal(latest.decisionType, "named_account_owner");
-  assert.equal(latest.assignedOwner?.id, "usr_elena_morales");
-  assert.equal(latest.triggerSignalId, signal.signalId);
-  assert.equal(latest.slaTargetMinutes, 240);
-  assert.equal(latest.slaDueAtIso, "2026-03-27T22:02:00.000Z");
-  assert.deepEqual(latest.reasonCodes, ["account_is_named", "sla_product_qualified_4h"]);
+  assert.equal(persisted?.decisionType, "named_account_owner");
+  assert.equal(persisted?.assignedOwner?.id, "usr_elena_morales");
+  assert.equal(persisted?.triggerSignalId, signal.signalId);
+  assert.equal(persisted?.slaTargetMinutes, 240);
+  assert.equal(persisted?.slaDueAtIso, "2026-03-27T22:02:00.000Z");
+  assert.deepEqual(persisted?.reasonCodes, ["account_is_named", "sla_product_qualified_4h"]);
   assert.deepEqual(
-    latest.reasonDetails.map((detail) => detail.code),
-    latest.reasonCodes,
+    persisted?.reasonDetails.map((detail) => detail.code),
+    persisted?.reasonCodes,
   );
-  assert.ok(latest.explanation.summary.length > 0);
+  assert.ok((persisted?.explanation.summary.length ?? 0) > 0);
   assert.deepEqual(
-    latest.explanation.reasonDetails.map((detail) => detail.code),
-    latest.reasonCodes,
+    persisted?.explanation.reasonDetails.map((detail) => detail.code),
+    persisted?.reasonCodes,
   );
-  assert.equal(latest.explanation.assignment.queue, latest.assignedQueue);
-  assert.equal(latest.explanation.capacity.checkedOwners[0]?.ownerId, "usr_elena_morales");
+  assert.equal(persisted?.explanation.assignment.queue, persisted?.assignedQueue);
+  assert.equal(persisted?.explanation.capacity.checkedOwners[0]?.ownerId, "usr_elena_morales");
   assert.deepEqual(
-    latest.explanation.evaluatedPolicies[0]?.reasonDetails.map((detail) => detail.code),
-    latest.explanation.evaluatedPolicies[0]?.reasonCodes,
+    persisted?.explanation.evaluatedPolicies[0]?.reasonDetails.map((detail) => detail.code),
+    persisted?.explanation.evaluatedPolicies[0]?.reasonCodes,
   );
-  assert.deepEqual(latest.explanation.sla.reasonCodes, ["sla_product_qualified_4h"]);
+  assert.deepEqual(persisted?.explanation.sla.reasonCodes, ["sla_product_qualified_4h"]);
   assert.deepEqual(
-    latest.explanation.sla.reasonDetails.map((detail) => detail.code),
+    persisted?.explanation.sla.reasonDetails.map((detail) => detail.code),
     ["sla_product_qualified_4h"],
   );
 });

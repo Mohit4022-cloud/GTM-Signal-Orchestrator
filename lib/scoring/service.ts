@@ -20,6 +20,7 @@ import type {
   ScoreComponentBreakdownContract,
   ScoreRecomputeTriggerContract,
 } from "@/lib/contracts/scoring";
+import { generateActionsForAccountWithClient } from "@/lib/actions";
 import { db } from "@/lib/db";
 import { stableStringify } from "@/lib/data/signals/shared";
 import {
@@ -477,6 +478,12 @@ async function recomputeScoresForSignalWithClient(
 
   const resolvedTrigger = resolveTrigger(trigger, ScoreTriggerType.SIGNAL_INGESTED, signal.id, signal.receivedAt);
   const accountScore = await recomputeAccountScoreWithClient(client, signal.accountId, resolvedTrigger);
+  if (accountScore) {
+    await generateActionsForAccountWithClient(client, signal.accountId, {
+      effectiveAt: signal.receivedAt,
+      triggerSignalId: signal.id,
+    });
+  }
   const leads = await client.lead.findMany({
     where: {
       accountId: signal.accountId,

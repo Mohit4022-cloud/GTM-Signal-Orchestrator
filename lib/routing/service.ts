@@ -19,6 +19,10 @@ import {
   recordRoutingFallbackCapacity,
   recordRoutingSentToOpsReview,
 } from "@/lib/audit/routing";
+import {
+  generateActionsForAccountWithClient,
+  generateActionsForLeadWithClient,
+} from "@/lib/actions";
 import type {
   RoutingDecisionContract,
   RoutingDecisionType,
@@ -1077,7 +1081,18 @@ export async function routeLeadWithClient(
     options.triggerSignalId ?? context.triggerSignal?.id ?? null,
   );
 
-  return persisted ? mapRoutingDecisionRow(persisted) : null;
+  if (!persisted) {
+    return null;
+  }
+
+  const contract = mapRoutingDecisionRow(persisted);
+  await generateActionsForLeadWithClient(client, leadId, {
+    effectiveAt: context.referenceTime,
+    triggerSignalId: options.triggerSignalId ?? context.triggerSignal?.id ?? null,
+    triggerRoutingDecisionId: contract.id,
+  });
+
+  return contract;
 }
 
 export async function routeLead(
@@ -1110,7 +1125,18 @@ async function routeAccountWithClient(
     options.triggerSignalId ?? context.triggerSignal?.id ?? null,
   );
 
-  return persisted ? mapRoutingDecisionRow(persisted) : null;
+  if (!persisted) {
+    return null;
+  }
+
+  const contract = mapRoutingDecisionRow(persisted);
+  await generateActionsForAccountWithClient(client, accountId, {
+    effectiveAt: context.referenceTime,
+    triggerSignalId: options.triggerSignalId ?? context.triggerSignal?.id ?? null,
+    triggerRoutingDecisionId: contract.id,
+  });
+
+  return contract;
 }
 
 export async function routeAccount(

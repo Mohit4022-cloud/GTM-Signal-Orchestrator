@@ -139,6 +139,8 @@ enum TaskType {
   RESEARCH
   HANDOFF
   REVIEW
+  ENRICH
+  ESCALATION
 }
 
 enum TaskPriority {
@@ -146,6 +148,31 @@ enum TaskPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum ActionCategory {
+  IMMEDIATE_RESPONSE
+  ENRICHMENT
+  HANDOFF
+  RESEARCH
+  NURTURE
+  PAUSE
+  ESCALATION
+  PLANNING
+  MANUAL
+}
+
+enum ActionType {
+  CALL_WITHIN_15_MINUTES
+  SEND_FOLLOW_UP_EMAIL
+  ENRICH_MISSING_CONTACT_FIELDS
+  HANDOFF_TO_AE
+  RESEARCH_ACCOUNT
+  ADD_TO_NURTURE_QUEUE
+  PAUSE_ACTIVE_ACCOUNT
+  ESCALATE_SLA_BREACH
+  GENERATE_ACCOUNT_SUMMARY
+  MANUAL_CUSTOM
 }
 
 enum AuditEventType {
@@ -164,6 +191,10 @@ enum AuditEventType {
   ROUTING_FALLBACK_CAPACITY
   ROUTING_SENT_TO_OPS_REVIEW
   TASK_CREATED
+  TASK_UPDATED
+  ACTION_RECOMMENDATION_CREATED
+  DUPLICATE_ACTION_PREVENTED
+  ACTION_GENERATION_SKIPPED
   SLA_BREACHED
   USER_OVERRIDE
   RULE_CONFIG_CHANGED
@@ -193,6 +224,7 @@ model User {
   accountPortfolio            Account[]         @relation("AccountOwner")
   assignedLeads               Lead[]            @relation("LeadOwner")
   ownedTasks                  Task[]            @relation("TaskOwner")
+  actionRecommendations       ActionRecommendation[] @relation("RecommendationOwner")
   routingAssignments          RoutingDecision[] @relation("RoutingOwner")
   routingSecondaryAssignments RoutingDecision[] @relation("RoutingSecondaryOwner")
   createdAt                   DateTime          @default(now())
@@ -237,6 +269,7 @@ model Account {
   leads             Lead[]
   signals           SignalEvent[]
   tasks             Task[]
+  actionRecommendations ActionRecommendation[]
   routingDecisions  RoutingDecision[]
   auditLogs         AuditLog[]
   scoreHistory      ScoreHistory[]
@@ -303,6 +336,7 @@ model Lead {
   signals         SignalEvent[]
   routingDecisions RoutingDecision[]
   tasks           Task[]
+  actionRecommendations ActionRecommendation[]
   scoreHistory    ScoreHistory[]
   auditLogs       AuditLog[]
 
@@ -339,6 +373,8 @@ model SignalEvent {
   lead                  Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
   triggeredScoreHistory ScoreHistory[] @relation("ScoreHistoryTriggerSignal")
   triggeredRoutingDecisions RoutingDecision[] @relation("RoutingTriggerSignal")
+  triggeredTasks Task[] @relation("TaskTriggerSignal")
+  triggeredActionRecommendations ActionRecommendation[] @relation("RecommendationTriggerSignal")
 
   @@index([accountId])
   @@index([leadId])
@@ -373,6 +409,8 @@ model ScoreHistory {
   account              Account?         @relation(fields: [accountId], references: [id], onDelete: Cascade)
   lead                 Lead?            @relation(fields: [leadId], references: [id], onDelete: Cascade)
   triggerSignal        SignalEvent?     @relation("ScoreHistoryTriggerSignal", fields: [triggerSignalId], references: [id], onDelete: SetNull)
+  triggeredTasks       Task[]           @relation("TaskTriggerScoreHistory")
+  triggeredActionRecommendations ActionRecommendation[] @relation("RecommendationTriggerScoreHistory")
 
   @@index([accountId, createdAt])
   @@index([leadId, createdAt])
@@ -404,6 +442,8 @@ model RoutingDecision {
   assignedOwner       User?               @relation("RoutingOwner", fields: [assignedOwnerId], references: [id], onDelete: SetNull)
   secondaryOwner      User?               @relation("RoutingSecondaryOwner", fields: [secondaryOwnerId], references: [id], onDelete: SetNull)
   triggerSignal       SignalEvent?        @relation("RoutingTriggerSignal", fields: [triggerSignalId], references: [id], onDelete: SetNull)
+  generatedTasks      Task[]              @relation("TaskTriggerRoutingDecision")
+  generatedRecommendations ActionRecommendation[] @relation("RecommendationTriggerRoutingDecision")
 
   @@index([entityType, entityId, createdAt])
   @@index([accountId, createdAt])
@@ -414,26 +454,74 @@ model RoutingDecision {
 }
 
 model Task {
-  id          String       @id
-  leadId      String?
-  accountId   String?
-  ownerId     String?
-  taskType    TaskType
-  priority    TaskPriority
-  dueAt       DateTime
-  status      TaskStatus
-  title       String
-  description String
-  createdAt   DateTime     @default(now())
-  completedAt DateTime?
-  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  account     Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  owner       User?        @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  id                       String       @id
+  leadId                   String?
+  accountId                String?
+  ownerId                  String?
+  taskType                 TaskType
+  actionType               ActionType   @default(MANUAL_CUSTOM)
+  actionCategory           ActionCategory @default(MANUAL)
+  priority                 TaskPriority
+  dueAt                    DateTime
+  status                   TaskStatus
+  title                    String
+  description              String
+  sourceReasonCodesJson    Json         @default("[]")
+  explanationJson          Json         @default("{}")
+  dedupeKey                String?      @unique
+  triggerSignalId          String?
+  triggerRoutingDecisionId String?
+  triggerScoreHistoryId    String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @default(now()) @updatedAt
+  completedAt              DateTime?
+  lead                     Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  account                  Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  owner                    User?        @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  triggerSignal            SignalEvent? @relation("TaskTriggerSignal", fields: [triggerSignalId], references: [id], onDelete: SetNull)
+  triggerRoutingDecision   RoutingDecision? @relation("TaskTriggerRoutingDecision", fields: [triggerRoutingDecisionId], references: [id], onDelete: SetNull)
+  triggerScoreHistory      ScoreHistory? @relation("TaskTriggerScoreHistory", fields: [triggerScoreHistoryId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
   @@index([leadId])
   @@index([ownerId])
   @@index([status, dueAt])
+  @@index([triggerSignalId])
+  @@index([triggerRoutingDecisionId])
+  @@index([triggerScoreHistoryId])
+}
+
+model ActionRecommendation {
+  id                       String         @id
+  leadId                   String?
+  accountId                String?
+  recommendationType       ActionType
+  actionCategory           ActionCategory
+  severity                 TaskPriority
+  title                    String
+  summary                  String
+  suggestedOwnerId         String?
+  suggestedQueue           String?
+  sourceReasonCodesJson    Json           @default("[]")
+  explanationJson          Json           @default("{}")
+  dedupeKey                String?        @unique
+  triggerSignalId          String?
+  triggerRoutingDecisionId String?
+  triggerScoreHistoryId    String?
+  createdAt                DateTime       @default(now())
+  lead                     Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  account                  Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  suggestedOwner           User?          @relation("RecommendationOwner", fields: [suggestedOwnerId], references: [id], onDelete: SetNull)
+  triggerSignal            SignalEvent?   @relation("RecommendationTriggerSignal", fields: [triggerSignalId], references: [id], onDelete: SetNull)
+  triggerRoutingDecision   RoutingDecision? @relation("RecommendationTriggerRoutingDecision", fields: [triggerRoutingDecisionId], references: [id], onDelete: SetNull)
+  triggerScoreHistory      ScoreHistory?  @relation("RecommendationTriggerScoreHistory", fields: [triggerScoreHistoryId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([suggestedOwnerId, createdAt])
+  @@index([triggerSignalId])
+  @@index([triggerRoutingDecisionId])
+  @@index([triggerScoreHistoryId])
 }
 
 model AuditLog {

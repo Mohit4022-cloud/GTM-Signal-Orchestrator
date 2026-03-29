@@ -19,7 +19,7 @@ after(async () => {
 test("GET /api/tasks returns frontend-safe filtered queue rows", async () => {
   const response = await tasksGet(
     new Request(
-      "http://localhost/api/tasks?entityType=lead&entityId=acc_atlas_grid_lead_01&priorityCode=P1",
+      "http://localhost/api/tasks?tracked=true&slaState=on_track&priorityCode=P1",
     ),
   );
   const payload = await response.json();
@@ -28,8 +28,10 @@ test("GET /api/tasks returns frontend-safe filtered queue rows", async () => {
   assert.ok(payload.totalCount >= 1);
   assert.ok(
     payload.rows.every(
-      (task: { linkedEntity: { leadId: string | null }; priorityCode: string }) =>
-        task.linkedEntity.leadId === "acc_atlas_grid_lead_01" && task.priorityCode === "P1",
+      (task: { priorityCode: string; sla: { isTracked: boolean; currentState: string } }) =>
+        task.priorityCode === "P1" &&
+        task.sla.isTracked === true &&
+        task.sla.currentState === "on_track",
     ),
   );
 });
@@ -78,6 +80,8 @@ test("POST /api/tasks creates manual tasks and PATCH /api/tasks/:id updates stat
   assert.equal(updated.status, "COMPLETED");
   assert.equal(updated.priorityCode, "P2");
   assert.equal(typeof updated.completedAtIso, "string");
+  assert.ok(updated.sla);
+  assert.equal(updated.sla.currentState, "completed");
 });
 
 test("POST /api/tasks returns 400 for invalid payloads", async () => {

@@ -2,6 +2,7 @@ import { ScoreEntityType, Segment, SignalStatus, Temperature } from "@prisma/cli
 
 import { getRecommendationsList, getTasks } from "../lib/actions";
 import { getAccountById, getAccounts } from "../lib/queries/accounts";
+import { getLeadById, getLeadQueue } from "../lib/queries/leads";
 import {
   getDashboardSummary,
   getHotAccounts,
@@ -82,6 +83,12 @@ async function main() {
   invariant(
     summary.slaHealth.length === 3,
     `Expected 3 SLA health points, found ${summary.slaHealth.length}.`,
+  );
+  invariant(Boolean(summary.slaSummary.asOfIso), "Dashboard summary must include SLA summary metadata.");
+  invariant(
+    typeof summary.slaSummary.leadMetrics.openTrackedCount === "number" &&
+      typeof summary.slaSummary.taskMetrics.openTrackedCount === "number",
+    "Dashboard summary must expose typed lead and task SLA metrics.",
   );
 
   invariant(hotAccounts.length > 0, "Expected at least one hot account.");
@@ -192,7 +199,12 @@ async function main() {
   invariant(Boolean(accountDetail.metadata.scoringVersion), "Expected account scoring version.");
   invariant(
     accountDetail.relatedLeads.every(
-      (lead) => typeof lead.fitScore === "number" && Boolean(lead.scoringVersion) && lead.scoreLastComputedAtIso !== undefined,
+      (lead) =>
+        typeof lead.fitScore === "number" &&
+        Boolean(lead.scoringVersion) &&
+        lead.scoreLastComputedAtIso !== undefined &&
+        typeof lead.sla.currentState === "string" &&
+        "timeRemainingMs" in lead.sla,
     ),
     "Related leads must expose fit scores and scoring snapshot metadata.",
   );
@@ -203,15 +215,19 @@ async function main() {
         Boolean(task.actionCategory) &&
         Boolean(task.priorityCode) &&
         task.reasonSummary.relatedReasonCodes.length > 0 &&
-        Boolean(task.explanation.summary),
+        Boolean(task.explanation.summary) &&
+        typeof task.sla.currentState === "string" &&
+        typeof task.sla.isTracked === "boolean",
     ),
     "Account detail open tasks must expose stable action metadata, reason summaries, and explanations.",
   );
   invariant(accountDetail.auditLog.length > 0, "Expected account detail audit log.");
 
-  const [atlasLeadQueue, beaconOpsRecommendations] = await Promise.all([
+  const [atlasLeadQueue, beaconOpsRecommendations, breachedLeadQueue, atlasLeadDetail] = await Promise.all([
     getTasks({ entityType: "lead", entityId: "acc_atlas_grid_lead_01" }),
     getRecommendationsList("account", "acc_beaconops"),
+    getLeadQueue({ tracked: true, slaState: "breached" }),
+    getLeadById("acc_atlas_grid_lead_01"),
   ]);
 
   invariant(atlasLeadQueue.rows.length > 0, "Expected Atlas Grid lead queue rows.");
@@ -225,7 +241,9 @@ async function main() {
         Boolean(task.priorityLabel) &&
         Boolean(task.reasonSummary.primaryCode) &&
         Boolean(task.linkedEntity.entityType) &&
-        Boolean(task.explanation.summary),
+        Boolean(task.explanation.summary) &&
+        typeof task.sla.currentState === "string" &&
+        typeof task.sla.isTracked === "boolean",
     ),
     "Task queue rows must expose frontend-safe action contracts.",
   );
@@ -234,6 +252,21 @@ async function main() {
       (recommendation) => recommendation.recommendationType === "ADD_TO_NURTURE_QUEUE",
     ),
     "BeaconOps recommendations should include the nurture recommendation contract.",
+  );
+  invariant(
+    breachedLeadQueue.rows.every(
+      (lead) => lead.sla.isTracked && lead.sla.currentState === "breached",
+    ),
+    "Lead queue rows must expose SLA-safe filtering.",
+  );
+  invariant(atlasLeadDetail !== null, "Expected Atlas lead detail.");
+  invariant(
+    atlasLeadDetail?.events.some((event) => event.eventType === "breached"),
+    "Lead detail must expose SLA event history.",
+  );
+  invariant(
+    atlasLeadDetail?.sla.currentState === "breached",
+    "Lead detail must expose the nested SLA snapshot.",
   );
 
   const [accountScore, leadScore, accountHistory] = await Promise.all([

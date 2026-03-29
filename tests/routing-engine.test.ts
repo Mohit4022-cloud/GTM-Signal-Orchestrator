@@ -456,15 +456,15 @@ test("resolveRoutingSla assigns deterministic deadlines from trigger signals and
 
   assert.equal(warmInbound.targetMinutes, 120);
   assert.equal(warmInbound.dueAt?.toISOString(), "2026-03-27T20:00:00.000Z");
-  assert.deepEqual(warmInbound.reasonCodes, ["sla_warm_inbound_120m"]);
+  assert.deepEqual(warmInbound.reasonCodes, ["sla_warm_inbound_2h"]);
 
   assert.equal(productQualified.targetMinutes, 240);
   assert.equal(productQualified.dueAt?.toISOString(), "2026-03-27T22:00:00.000Z");
-  assert.deepEqual(productQualified.reasonCodes, ["sla_product_qualified_240m"]);
+  assert.deepEqual(productQualified.reasonCodes, ["sla_product_qualified_4h"]);
 
   assert.equal(generalFormFill.targetMinutes, 1440);
   assert.equal(generalFormFill.dueAt?.toISOString(), "2026-03-28T18:02:00.000Z");
-  assert.deepEqual(generalFormFill.reasonCodes, ["sla_general_form_fill_1440m"]);
+  assert.deepEqual(generalFormFill.reasonCodes, ["sla_general_form_fill_24h"]);
 
   assert.equal(noSla.targetMinutes, null);
   assert.equal(noSla.dueAt, null);
@@ -581,7 +581,7 @@ test("matched signal reroutes an urgent lead and persists a normalized routing d
   assert.equal(latest.triggerSignalId, signal.signalId);
   assert.equal(latest.slaTargetMinutes, 240);
   assert.equal(latest.slaDueAtIso, "2026-03-27T22:02:00.000Z");
-  assert.deepEqual(latest.reasonCodes, ["account_is_named", "sla_product_qualified_240m"]);
+  assert.deepEqual(latest.reasonCodes, ["account_is_named", "sla_product_qualified_4h"]);
   assert.deepEqual(
     latest.reasonDetails.map((detail) => detail.code),
     latest.reasonCodes,
@@ -597,9 +597,9 @@ test("matched signal reroutes an urgent lead and persists a normalized routing d
     latest.explanation.evaluatedPolicies[0]?.reasonDetails.map((detail) => detail.code),
     latest.explanation.evaluatedPolicies[0]?.reasonCodes,
   );
-  assert.deepEqual(latest.explanation.sla.reasonCodes, ["sla_product_qualified_240m"]);
+  assert.deepEqual(latest.explanation.sla.reasonCodes, ["sla_product_qualified_4h"]);
   assert.deepEqual(
     latest.explanation.sla.reasonDetails.map((detail) => detail.code),
-    ["sla_product_qualified_240m"],
+    ["sla_product_qualified_4h"],
   );
 });

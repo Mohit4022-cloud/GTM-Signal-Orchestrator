@@ -9,6 +9,7 @@ import {
   LeadStatus,
   LifecycleStage,
   Prisma,
+  SignalCategory,
   Segment,
   SignalType,
   TaskStatus,
@@ -30,6 +31,13 @@ import {
   setAccountManualPriorityBoost,
   setLeadManualPriorityBoost,
 } from "../lib/scoring";
+import {
+  assignSlaForLead,
+  assignSlaForTask,
+  resolveLeadSla,
+  resolveTaskSla,
+  runSlaBreachChecks,
+} from "../lib/sla";
 
 const prisma = db;
 
@@ -1466,6 +1474,152 @@ async function ingestSeedSignal(input: IngestSignalInput) {
   };
 }
 
+function getOnTimeResolutionDate(dueAt: Date | null, fallback: Date) {
+  if (!dueAt) {
+    return fallback;
+  }
+
+  return new Date(dueAt.getTime() - 5 * 60 * 1000);
+}
+
+async function resolveBackgroundLeadSlaBacklog(openLeadIdsToKeep: ReadonlySet<string>) {
+  const leads = await prisma.lead.findMany({
+    where: {
+      slaTargetMinutes: {
+        not: null,
+      },
+      firstResponseAt: null,
+    },
+    select: {
+      id: true,
+      slaDeadlineAt: true,
+      routedAt: true,
+      createdAt: true,
+    },
+  });
+
+  for (const lead of leads) {
+    if (openLeadIdsToKeep.has(lead.id)) {
+      continue;
+    }
+
+    const fallback = addMinutes(lead.routedAt ?? lead.createdAt, 5);
+    await resolveLeadSla({
+      leadId: lead.id,
+      firstResponseAt: getOnTimeResolutionDate(lead.slaDeadlineAt, fallback),
+    });
+  }
+}
+
+async function resolveBackgroundTrackedTaskBacklog(openLeadIdsToKeep: ReadonlySet<string>) {
+  const tasks = await prisma.task.findMany({
+    where: {
+      isSlaTracked: true,
+      status: {
+        not: TaskStatus.COMPLETED,
+      },
+    },
+    select: {
+      id: true,
+      leadId: true,
+      dueAt: true,
+      createdAt: true,
+    },
+  });
+
+  for (const task of tasks) {
+    if (task.leadId && openLeadIdsToKeep.has(task.leadId)) {
+      continue;
+    }
+
+    await resolveTaskSla({
+      taskId: task.id,
+      completedAt: getOnTimeResolutionDate(task.dueAt, addMinutes(task.createdAt, 5)),
+    });
+  }
+}
+
+async function applyLeadSlaScenario(params: {
+  leadId: string;
+  inboundType: string;
+  temperature: Temperature;
+  status: LeadStatus;
+  referenceTime: Date;
+  triggerSignal: {
+    eventType: SignalType;
+    eventCategory: SignalCategory;
+    receivedAt: Date;
+  };
+  firstResponseAt?: Date | null;
+}) {
+  await prisma.lead.update({
+    where: { id: params.leadId },
+    data: {
+      inboundType: params.inboundType,
+      temperature: params.temperature,
+      status: params.status,
+      firstResponseAt: null,
+      routedAt: params.referenceTime,
+      slaPolicyKey: null,
+      slaPolicyVersion: null,
+      slaTargetMinutes: null,
+      slaDeadlineAt: null,
+      slaStatus: null,
+      slaBreachedAt: null,
+    },
+  });
+
+  await assignSlaForLead(params.leadId, {
+    inboundType: params.inboundType,
+    temperature: params.temperature,
+    triggerSignal: params.triggerSignal,
+    referenceTime: params.referenceTime,
+  });
+
+  if (params.firstResponseAt) {
+    await resolveLeadSla({
+      leadId: params.leadId,
+      firstResponseAt: params.firstResponseAt,
+    });
+  }
+}
+
+async function createTrackedTaskScenario(params: {
+  leadId: string;
+  accountId: string;
+  ownerId: string | null;
+  dueAt: Date;
+  title: string;
+  description: string;
+  policyKey?: string;
+  policyVersion?: string;
+  targetMinutes?: number;
+}) {
+  const taskId = await createManualTask({
+    leadId: params.leadId,
+    accountId: params.accountId,
+    ownerId: params.ownerId,
+    taskType: "CALL",
+    priorityCode: "P1",
+    dueAtIso: params.dueAt.toISOString(),
+    title: params.title,
+    description: params.description,
+  });
+
+  await assignSlaForTask(taskId, {
+    isTracked: true,
+    policyKey: params.policyKey ?? "sla_hot_inbound_15m",
+    policyVersion: params.policyVersion ?? "routing/v1",
+    targetMinutes: params.targetMinutes ?? 15,
+    dueAt: params.dueAt,
+  });
+
+  return {
+    taskId,
+    dueAt: params.dueAt,
+  };
+}
+
 async function clearGeneratedOperatorArtifacts() {
   await prisma.auditLog.deleteMany({
     where: {
@@ -1474,6 +1628,9 @@ async function clearGeneratedOperatorArtifacts() {
           AuditEventType.ROUTE_ASSIGNED,
           AuditEventType.ROUTING_FALLBACK_CAPACITY,
           AuditEventType.ROUTING_SENT_TO_OPS_REVIEW,
+          AuditEventType.SLA_ASSIGNED,
+          AuditEventType.SLA_BREACHED,
+          AuditEventType.SLA_RESOLVED,
           AuditEventType.TASK_CREATED,
           AuditEventType.TASK_UPDATED,
           AuditEventType.ACTION_RECOMMENDATION_CREATED,
@@ -1483,6 +1640,7 @@ async function clearGeneratedOperatorArtifacts() {
       },
     },
   });
+  await prisma.slaEvent.deleteMany();
   await prisma.actionRecommendation.deleteMany();
   await prisma.task.deleteMany();
   await prisma.routingDecision.deleteMany();
@@ -1490,6 +1648,7 @@ async function clearGeneratedOperatorArtifacts() {
 
 export async function clearDemoData() {
   await prisma.auditLog.deleteMany();
+  await prisma.slaEvent.deleteMany();
   await prisma.actionRecommendation.deleteMany();
   await prisma.task.deleteMany();
   await prisma.routingDecision.deleteMany();
@@ -2207,6 +2366,93 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     dueAtIso: addHours(baseDate, 96).toISOString(),
     title: "Review coverage plan for Meridian Freight Cloud",
     description: "Confirm owner coverage, open dependencies, and the next-best action for the account plan.",
+  });
+
+  const slaSeedNow = new Date();
+  slaSeedNow.setSeconds(0, 0);
+
+  await resolveBackgroundLeadSlaBacklog(new Set(["acc_atlas_grid_lead_01"]));
+  await resolveBackgroundTrackedTaskBacklog(new Set(["acc_atlas_grid_lead_01"]));
+  await runSlaBreachChecks(slaSeedNow);
+
+  await applyLeadSlaScenario({
+    leadId: "acc_meridian_freight_lead_01",
+    inboundType: "Inbound",
+    temperature: Temperature.WARM,
+    status: LeadStatus.NEW,
+    referenceTime: subMinutes(slaSeedNow, 90),
+    triggerSignal: {
+      eventType: SignalType.WEBSITE_VISIT,
+      eventCategory: SignalCategory.WEB_ACTIVITY,
+      receivedAt: subMinutes(slaSeedNow, 90),
+    },
+  });
+  await applyLeadSlaScenario({
+    leadId: "acc_signalnest_lead_01",
+    inboundType: "Product-led",
+    temperature: Temperature.WARM,
+    status: LeadStatus.QUALIFIED,
+    referenceTime: subMinutes(slaSeedNow, 90),
+    triggerSignal: {
+      eventType: SignalType.PRODUCT_USAGE_MILESTONE,
+      eventCategory: SignalCategory.PRODUCT,
+      receivedAt: subMinutes(slaSeedNow, 90),
+    },
+  });
+  await applyLeadSlaScenario({
+    leadId: "acc_beaconops_lead_01",
+    inboundType: "Signal-driven",
+    temperature: Temperature.WARM,
+    status: LeadStatus.NEW,
+    referenceTime: subHours(slaSeedNow, 25),
+    triggerSignal: {
+      eventType: SignalType.FORM_FILL,
+      eventCategory: SignalCategory.CONVERSION,
+      receivedAt: subHours(slaSeedNow, 25),
+    },
+  });
+  await applyLeadSlaScenario({
+    leadId: "acc_summitflow_finance_lead_01",
+    inboundType: "Inbound",
+    temperature: Temperature.HOT,
+    status: LeadStatus.WORKING,
+    referenceTime: subMinutes(slaSeedNow, 80),
+    triggerSignal: {
+      eventType: SignalType.FORM_FILL,
+      eventCategory: SignalCategory.CONVERSION,
+      receivedAt: subMinutes(slaSeedNow, 80),
+    },
+    firstResponseAt: subMinutes(slaSeedNow, 70),
+  });
+
+  await createTrackedTaskScenario({
+    leadId: "acc_frontier_retail_lead_01",
+    accountId: "acc_frontier_retail",
+    ownerId: "usr_hana_cho",
+    dueAt: addMinutes(slaSeedNow, 10),
+    title: "Call Frontier Retail within 15 minutes",
+    description: "Frontier Retail has an active inbound request that still needs live follow-up.",
+  });
+  await createTrackedTaskScenario({
+    leadId: "acc_veritypulse_lead_01",
+    accountId: "acc_veritypulse",
+    ownerId: "usr_sarah_kim",
+    dueAt: subMinutes(slaSeedNow, 5),
+    title: "Call VerityPulse Health within 15 minutes",
+    description: "VerityPulse Health is waiting on live follow-up from the SDR pod.",
+  });
+  const pinecrestTask = await createTrackedTaskScenario({
+    leadId: "acc_pinecrest_lead_01",
+    accountId: "acc_pinecrest",
+    ownerId: "usr_hana_cho",
+    dueAt: subMinutes(slaSeedNow, 10),
+    title: "Call Pinecrest Labs within 15 minutes",
+    description: "Pinecrest Labs requested a quick callback and should be resolved same hour.",
+  });
+
+  await resolveTaskSla({
+    taskId: pinecrestTask.taskId,
+    completedAt: subMinutes(slaSeedNow, 12),
   });
 
   const [signalCount, taskCount, recommendationCount] = await Promise.all([

@@ -1,0 +1,176 @@
+import assert from "node:assert/strict";
+import { after, beforeEach, test } from "node:test";
+
+import { ActionCategory, ActionType, SlaEventType } from "@prisma/client";
+
+import {
+  buildLeadSlaSnapshot,
+  getDashboardSlaSummary,
+  getDueSoonThresholdMs,
+  getLeadSlaState,
+  getTaskSlaState,
+  runSlaBreachChecks,
+} from "@/lib/sla";
+import { db } from "@/lib/db";
+
+import { resetDatabase } from "./helpers/db";
+
+beforeEach(async () => {
+  await resetDatabase();
+});
+
+after(async () => {
+  await resetDatabase();
+});
+
+test("seeded SLA scenarios expose deterministic lead and task states", async () => {
+  const [atlasLead, meridianLead, signalNestLead, beaconOpsLead, summitFlowLead] =
+    await Promise.all([
+      getLeadSlaState("acc_atlas_grid_lead_01"),
+      getLeadSlaState("acc_meridian_freight_lead_01"),
+      getLeadSlaState("acc_signalnest_lead_01"),
+      getLeadSlaState("acc_beaconops_lead_01"),
+      getLeadSlaState("acc_summitflow_finance_lead_01"),
+    ]);
+
+  assert.equal(atlasLead?.currentState, "breached");
+  assert.equal(meridianLead?.currentState, "due_soon");
+  assert.equal(signalNestLead?.currentState, "on_track");
+  assert.equal(beaconOpsLead?.currentState, "overdue");
+  assert.equal(summitFlowLead?.currentState, "completed");
+  assert.equal(summitFlowLead?.metSla, true);
+
+  const [atlasTaskRow, frontierTaskRow, verityTaskRow, pinecrestTaskRow] =
+    await Promise.all([
+      db.task.findFirstOrThrow({
+        where: { leadId: "acc_atlas_grid_lead_01", isSlaTracked: true },
+        select: { id: true },
+      }),
+      db.task.findFirstOrThrow({
+        where: { leadId: "acc_frontier_retail_lead_01", isSlaTracked: true },
+        select: { id: true },
+      }),
+      db.task.findFirstOrThrow({
+        where: { leadId: "acc_veritypulse_lead_01", isSlaTracked: true },
+        select: { id: true },
+      }),
+      db.task.findFirstOrThrow({
+        where: { leadId: "acc_pinecrest_lead_01", isSlaTracked: true },
+        select: { id: true },
+      }),
+    ]);
+  const [atlasTask, frontierTask, verityTask, pinecrestTask] = await Promise.all([
+    getTaskSlaState(atlasTaskRow.id),
+    getTaskSlaState(frontierTaskRow.id),
+    getTaskSlaState(verityTaskRow.id),
+    getTaskSlaState(pinecrestTaskRow.id),
+  ]);
+
+  assert.equal(atlasTask?.currentState, "breached");
+  assert.equal(frontierTask?.currentState, "on_track");
+  assert.equal(verityTask?.currentState, "overdue");
+  assert.equal(pinecrestTask?.currentState, "completed");
+  assert.equal(pinecrestTask?.metSla, true);
+
+  const summary = await getDashboardSlaSummary();
+  assert.ok(summary.leadMetrics.openTrackedCount >= 4);
+  assert.ok(summary.leadMetrics.dueSoonCount >= 1);
+  assert.ok(summary.leadMetrics.breachedCount >= 1);
+  assert.ok(summary.taskMetrics.overdueCount >= 1);
+  assert.ok(summary.taskMetrics.breachedCount >= 1);
+});
+
+test("runSlaBreachChecks is idempotent and does not duplicate escalation tasks", async () => {
+  const verityTask = await db.task.findFirstOrThrow({
+    where: { leadId: "acc_veritypulse_lead_01", isSlaTracked: true },
+    select: { id: true },
+  });
+  const atlasEscalationsBefore = await db.task.count({
+    where: {
+      leadId: "acc_atlas_grid_lead_01",
+      actionType: ActionType.ESCALATE_SLA_BREACH,
+    },
+  });
+  const verityBreachesBefore = await db.slaEvent.count({
+    where: {
+      taskId: verityTask.id,
+      eventType: SlaEventType.BREACHED,
+    },
+  });
+
+  await runSlaBreachChecks(new Date());
+  await runSlaBreachChecks(new Date());
+
+  const verityTaskAfter = await getTaskSlaState(verityTask.id);
+  const atlasEscalationsAfter = await db.task.count({
+    where: {
+      leadId: "acc_atlas_grid_lead_01",
+      actionType: ActionType.ESCALATE_SLA_BREACH,
+    },
+  });
+  const verityBreachesAfter = await db.slaEvent.count({
+    where: {
+      taskId: verityTask.id,
+      eventType: SlaEventType.BREACHED,
+    },
+  });
+
+  assert.equal(verityTaskAfter?.currentState, "breached");
+  assert.equal(verityBreachesAfter, verityBreachesBefore + 1);
+  assert.equal(atlasEscalationsAfter, atlasEscalationsBefore);
+});
+
+test("primary response tracking stays singular for the Atlas hot inbound cycle", async () => {
+  const atlasImmediateTasks = await db.task.findMany({
+    where: {
+      leadId: "acc_atlas_grid_lead_01",
+      actionCategory: ActionCategory.IMMEDIATE_RESPONSE,
+    },
+    select: {
+      actionType: true,
+      isSlaTracked: true,
+    },
+  });
+
+  assert.ok(atlasImmediateTasks.length >= 2);
+  assert.equal(atlasImmediateTasks.filter((task) => task.isSlaTracked).length, 1);
+  assert.equal(
+    atlasImmediateTasks.find((task) => task.isSlaTracked)?.actionType,
+    ActionType.CALL_WITHIN_15_MINUTES,
+  );
+});
+
+test("due soon thresholds and met-SLA snapshots remain deterministic", () => {
+  assert.equal(getDueSoonThresholdMs(15, true), 5 * 60 * 1000);
+  assert.equal(getDueSoonThresholdMs(120, true), 30 * 60 * 1000);
+  assert.equal(getDueSoonThresholdMs(1440, true), 120 * 60 * 1000);
+  assert.equal(getDueSoonThresholdMs(null, false), 60 * 60 * 1000);
+
+  const completedLead = buildLeadSlaSnapshot({
+    isTracked: true,
+    policyKey: "sla_hot_inbound_15m",
+    policyVersion: "routing/v1",
+    targetMinutes: 15,
+    dueAt: new Date("2026-03-28T18:15:00.000Z"),
+    breachedAt: null,
+    firstResponseAt: new Date("2026-03-28T18:10:00.000Z"),
+    routedAt: new Date("2026-03-28T18:00:00.000Z"),
+    now: new Date("2026-03-28T18:20:00.000Z"),
+  });
+  const lateLead = buildLeadSlaSnapshot({
+    isTracked: true,
+    policyKey: "sla_hot_inbound_15m",
+    policyVersion: "routing/v1",
+    targetMinutes: 15,
+    dueAt: new Date("2026-03-28T18:15:00.000Z"),
+    breachedAt: new Date("2026-03-28T18:16:00.000Z"),
+    firstResponseAt: new Date("2026-03-28T18:25:00.000Z"),
+    routedAt: new Date("2026-03-28T18:00:00.000Z"),
+    now: new Date("2026-03-28T18:30:00.000Z"),
+  });
+
+  assert.equal(completedLead.currentState, "completed");
+  assert.equal(completedLead.metSla, true);
+  assert.equal(lateLead.currentState, "completed");
+  assert.equal(lateLead.metSla, false);
+});

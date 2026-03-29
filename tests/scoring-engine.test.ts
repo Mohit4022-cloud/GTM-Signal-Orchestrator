@@ -512,7 +512,7 @@ test("manual attachment rescues an unmatched signal and triggers rescoring", asy
   assert.ok(attachAudit);
   assert.ok(afterRoutingCount > beforeRoutingCount);
   assert.equal(latestRoutingDecision?.triggerSignalId, unmatched.signalId);
-  assert.equal(latestRoutingDecision?.slaTargetMinutes, 1440);
+  assert.equal(latestRoutingDecision?.slaTargetMinutes, 240);
   assert.equal(latestRoutingDecision?.assignedOwnerId, "usr_owen_price");
 });
 

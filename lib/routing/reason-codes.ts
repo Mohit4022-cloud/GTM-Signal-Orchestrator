@@ -81,17 +81,17 @@ const metadataByReasonCode: Record<RoutingReasonCode, RoutingReasonMetadata> = {
     description: "Hot inbound work receives the fastest response target.",
     category: "sla",
   },
-  sla_warm_inbound_120m: {
+  sla_warm_inbound_2h: {
     label: "2 hour warm inbound SLA",
     description: "Warm inbound work receives a two-hour response target.",
     category: "sla",
   },
-  sla_product_qualified_240m: {
+  sla_product_qualified_4h: {
     label: "4 hour product-qualified SLA",
     description: "Product-qualified work receives a four-hour response target.",
     category: "sla",
   },
-  sla_general_form_fill_1440m: {
+  sla_general_form_fill_24h: {
     label: "24 hour form fill SLA",
     description: "General form-fill work receives a next-day response target.",
     category: "sla",

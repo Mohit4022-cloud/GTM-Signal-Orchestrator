@@ -34,6 +34,7 @@ import type {
   RoutingSimulationResultContract,
 } from "@/lib/contracts/routing";
 import { db } from "@/lib/db";
+import { assignSlaForLeadWithClient } from "@/lib/sla";
 
 import {
   applyCapacityScenarioOverride,
@@ -915,7 +916,6 @@ async function persistRoutingDecision(
       data: {
         currentOwnerId: nextDecision.assignedOwner?.id ?? null,
         routedAt: context.referenceTime,
-        slaDeadlineAt: nextDecision.slaDueAt,
       },
     });
   } else if (context.entityType === "account" && context.accountId) {
@@ -1086,6 +1086,18 @@ export async function routeLeadWithClient(
   }
 
   const contract = mapRoutingDecisionRow(persisted);
+  await assignSlaForLeadWithClient(client, leadId, {
+    inboundType: context.inboundType,
+    temperature: context.temperature,
+    triggerSignal: context.triggerSignal
+      ? {
+          eventType: context.triggerSignal.eventType,
+          eventCategory: context.triggerSignal.eventCategory,
+          receivedAt: context.triggerSignal.receivedAt,
+        }
+      : null,
+    referenceTime: context.referenceTime,
+  });
   await generateActionsForLeadWithClient(client, leadId, {
     effectiveAt: context.referenceTime,
     triggerSignalId: options.triggerSignalId ?? context.triggerSignal?.id ?? null,

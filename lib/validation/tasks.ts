@@ -8,6 +8,7 @@ import {
   type TaskFiltersInput,
   type UpdateTaskRequest,
 } from "@/lib/contracts/actions";
+import { slaCurrentStateValues, type SlaCurrentState } from "@/lib/contracts/sla";
 
 function parseBooleanValue(value: string | null) {
   if (value === null) {
@@ -73,6 +74,8 @@ const taskFiltersSchema = z
     status: z.array(z.nativeEnum(TaskStatus)).optional(),
     priorityCode: z.array(z.enum(taskPriorityCodeValues)).optional(),
     overdue: z.boolean().optional(),
+    tracked: z.boolean().optional(),
+    slaState: z.array(z.enum(slaCurrentStateValues)).optional(),
     entityType: z.enum(actionEntityTypeValues).optional(),
     entityId: z.string().trim().min(1).optional(),
   })
@@ -119,6 +122,15 @@ export function parseTaskFilters(searchParams: URLSearchParams): TaskFiltersInpu
       const raw = searchParams.get("overdue");
       const parsed = parseBooleanValue(raw);
       return typeof parsed === "boolean" ? parsed : parsed === undefined ? undefined : raw;
+    })(),
+    tracked: (() => {
+      const raw = searchParams.get("tracked");
+      const parsed = parseBooleanValue(raw);
+      return typeof parsed === "boolean" ? parsed : parsed === undefined ? undefined : raw;
+    })(),
+    slaState: (() => {
+      const values = normalizeListValues(searchParams.getAll("slaState"));
+      return values.length > 0 ? (values as SlaCurrentState[]) : undefined;
     })(),
     entityType: searchParams.get("entityType") ?? undefined,
     entityId: searchParams.get("entityId") ?? undefined,

@@ -86,32 +86,6 @@ export function evaluateLeadActionRules(context: LeadRuleContext): RuleEvaluatio
   const recommendations: RecommendationDraft[] = [];
   const skippedReasonCodes: ActionReasonCode[] = [];
 
-  if (
-    context.routingDecision?.slaDueAt &&
-    context.firstResponseAt === null &&
-    context.routingDecision.slaDueAt.getTime() < context.now.getTime()
-  ) {
-    const reasonCodes: ActionReasonCode[] = ["sla_breach_requires_escalation"];
-    tasks.push(
-      createTaskDraft({
-        context: {
-          ...context.templateContext,
-          triggerRoutingDecisionId: context.routingDecision.id,
-          triggerScoreHistoryId: context.scoreHistoryId,
-        },
-        ownerId: context.aeOwnerId ?? context.callOwnerId,
-        taskType: TaskType.ESCALATION,
-        actionType: ActionType.ESCALATE_SLA_BREACH,
-        actionCategory: ActionCategory.ESCALATION,
-        priority: TaskPriority.URGENT,
-        dueAt: context.now,
-        title: `Escalate SLA breach for ${context.accountName}`,
-        description: `${context.accountName} has missed the active response SLA and needs escalation immediately.`,
-        reasonCodes,
-      }),
-    );
-  }
-
   if (!isRequestDemoSignal(context.triggerSignal)) {
     if (!context.contactPhone) {
       const reasonCodes: ActionReasonCode[] = ["missing_contact_data_requires_enrichment"];

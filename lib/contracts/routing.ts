@@ -27,9 +27,9 @@ export const routingReasonCodeValues = [
   "no_eligible_owner_found",
   "sent_to_ops_review",
   "sla_hot_inbound_15m",
-  "sla_warm_inbound_120m",
-  "sla_product_qualified_240m",
-  "sla_general_form_fill_1440m",
+  "sla_warm_inbound_2h",
+  "sla_product_qualified_4h",
+  "sla_general_form_fill_24h",
 ] as const;
 
 export type RoutingReasonCode = (typeof routingReasonCodeValues)[number];

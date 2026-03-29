@@ -28,6 +28,7 @@ import {
   getScoreBucket,
 } from "@/lib/formatters/display";
 import { getAccountScoreBreakdown, getScoreHistoryForEntity } from "@/lib/scoring";
+import { mapLeadSlaSnapshot } from "@/lib/sla";
 
 const SEGMENTS = Object.values(Segment);
 const GEOGRAPHIES = Object.values(Geography);
@@ -247,6 +248,7 @@ export async function getAccounts(
 }
 
 export async function getAccountById(id: string): Promise<AccountDetailContract | null> {
+  const now = new Date();
   const [account, timeline, score, scoreHistory, openTaskQueue] = await Promise.all([
     db.account.findUnique({
       where: { id },
@@ -307,7 +309,11 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
             fitScore: true,
             scoringVersion: true,
             scoreLastComputedAt: true,
+            slaPolicyKey: true,
+            slaPolicyVersion: true,
+            slaTargetMinutes: true,
             slaDeadlineAt: true,
+            slaBreachedAt: true,
             firstResponseAt: true,
             routedAt: true,
             contactId: true,
@@ -426,6 +432,18 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       firstResponseAtLabel: getRelativeLabel(lead.firstResponseAt),
       routedAtIso: lead.routedAt?.toISOString() ?? null,
       routedAtLabel: getRelativeLabel(lead.routedAt),
+      sla: mapLeadSlaSnapshot(
+        {
+          slaPolicyKey: lead.slaPolicyKey,
+          slaPolicyVersion: lead.slaPolicyVersion,
+          slaTargetMinutes: lead.slaTargetMinutes,
+          slaDeadlineAt: lead.slaDeadlineAt,
+          slaBreachedAt: lead.slaBreachedAt,
+          firstResponseAt: lead.firstResponseAt,
+          routedAt: lead.routedAt,
+        },
+        now,
+      ),
     })),
     recentSignals: timeline.map((signal) => {
       return {
@@ -469,6 +487,7 @@ export async function getAccountById(id: string): Promise<AccountDetailContract 
       reasonSummary: task.reasonSummary,
       explanation: task.explanation,
       isOverdue: task.isOverdue,
+      sla: task.sla,
     })),
     score,
     scoreHistory: scoreHistory.rows,

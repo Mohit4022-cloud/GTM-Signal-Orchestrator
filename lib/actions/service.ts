@@ -19,6 +19,7 @@ import type {
 } from "@/lib/contracts/actions";
 import { priorityValueByCode } from "@/lib/contracts/actions";
 import { db } from "@/lib/db";
+import { assignSlaForTaskWithClient, resolveTaskSlaWithClient } from "@/lib/sla";
 
 import {
   recordActionGenerationSkipped,
@@ -343,6 +344,77 @@ async function runGeneratedOutputs(
     preventedDuplicateKeys,
     skippedReasonCodes: evaluation.skippedReasonCodes,
   };
+}
+
+async function syncPrimaryLeadSlaTask(
+  client: ActionClient,
+  leadId: string,
+  routingDecisionId: string | null,
+) {
+  if (!routingDecisionId) {
+    return null;
+  }
+
+  const lead = await client.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      slaPolicyKey: true,
+      slaPolicyVersion: true,
+      slaTargetMinutes: true,
+    },
+  });
+
+  if (!lead?.slaTargetMinutes) {
+    return null;
+  }
+
+  const candidates = await client.task.findMany({
+    where: {
+      leadId,
+      triggerRoutingDecisionId: routingDecisionId,
+      actionCategory: ActionCategory.IMMEDIATE_RESPONSE,
+      status: {
+        in: [TaskStatus.OPEN, TaskStatus.IN_PROGRESS],
+      },
+    },
+    orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      dueAt: true,
+    },
+  });
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const primaryTask = candidates[0]!;
+
+  await client.task.updateMany({
+    where: {
+      leadId,
+      triggerRoutingDecisionId: routingDecisionId,
+      id: {
+        not: primaryTask.id,
+      },
+      isSlaTracked: true,
+    },
+    data: {
+      isSlaTracked: false,
+      slaPolicyKey: null,
+      slaPolicyVersion: null,
+      slaTargetMinutes: null,
+      slaStatus: null,
+      slaBreachedAt: null,
+    },
+  });
+
+  return assignSlaForTaskWithClient(client, primaryTask.id, {
+    isTracked: true,
+    policyKey: lead.slaPolicyKey,
+    policyVersion: lead.slaPolicyVersion,
+    dueAt: primaryTask.dueAt,
+  });
 }
 
 async function buildLeadRuleContext(
@@ -714,7 +786,7 @@ export async function generateActionsForLeadWithClient(
   }
 
   const evaluation = evaluateLeadActionRules(context);
-  return runGeneratedOutputs(
+  const result = await runGeneratedOutputs(
     client,
     "lead",
     leadId,
@@ -722,6 +794,10 @@ export async function generateActionsForLeadWithClient(
     leadId,
     evaluation,
   );
+
+  await syncPrimaryLeadSlaTask(client, leadId, context.routingDecision?.id ?? null);
+
+  return result;
 }
 
 export async function generateActionsForLead(
@@ -852,6 +928,9 @@ export async function updateTask(
         description: true,
         status: true,
         completedAt: true,
+        isSlaTracked: true,
+        slaStatus: true,
+        slaBreachedAt: true,
       },
     });
 
@@ -861,6 +940,11 @@ export async function updateTask(
 
     const nextStatus = input.status ?? existing.status;
     const dueAt = input.dueAtIso ? new Date(input.dueAtIso) : existing.dueAt;
+
+    const completedAt =
+      nextStatus === TaskStatus.COMPLETED
+        ? existing.completedAt ?? new Date()
+        : null;
 
     await client.task.update({
       where: { id: taskId },
@@ -874,12 +958,26 @@ export async function updateTask(
         title: input.title ?? existing.title,
         description: input.description ?? existing.description,
         status: nextStatus,
-        completedAt:
+        completedAt,
+        slaStatus:
           nextStatus === TaskStatus.COMPLETED
-            ? existing.completedAt ?? new Date()
-            : null,
+            ? existing.isSlaTracked
+              ? "COMPLETED"
+              : existing.slaStatus
+            : existing.isSlaTracked
+              ? existing.slaBreachedAt
+                ? "BREACHED"
+                : "ON_TRACK"
+              : null,
       },
     });
+
+    if (nextStatus === TaskStatus.COMPLETED && completedAt) {
+      await resolveTaskSlaWithClient(client, {
+        taskId,
+        completedAt,
+      });
+    }
 
     await recordTaskUpdated(client, {
       taskId,

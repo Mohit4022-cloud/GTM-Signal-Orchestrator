@@ -1,6 +1,15 @@
 import type { LeadStatus, Temperature } from "@prisma/client";
 
-import type { LeadSlaSnapshotContract, SlaEventContract } from "@/lib/contracts/sla";
+import type { LeadSlaSnapshotContract, SlaCurrentState, SlaEventContract } from "@/lib/contracts/sla";
+
+export type LeadFiltersInput = {
+  ownerId?: string;
+  status?: LeadStatus | LeadStatus[];
+  temperature?: Temperature | Temperature[];
+  slaState?: SlaCurrentState | SlaCurrentState[];
+  tracked?: boolean;
+  overdue?: boolean;
+};
 
 export type LeadQueueItemContract = {
   id: string;
@@ -25,7 +34,7 @@ export type LeadQueueContract = {
     ownerId: string;
     statuses: LeadStatus[];
     temperatures: Temperature[];
-    slaStates: string[];
+    slaStates: SlaCurrentState[];
     tracked: boolean | null;
     overdue: boolean | null;
   };

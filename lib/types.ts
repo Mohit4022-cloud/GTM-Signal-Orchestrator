@@ -48,6 +48,7 @@ export type {
 } from "@/lib/contracts/actions";
 export type {
   LeadDetailContract,
+  LeadFiltersInput,
   LeadQueueContract,
   LeadQueueItemContract,
   PublicLeadApiErrorCode,

@@ -26,6 +26,7 @@ import {
   priorityLabelByCode,
 } from "@/lib/contracts/actions";
 import { db } from "@/lib/db";
+import { mapTaskSlaSnapshot } from "@/lib/sla";
 
 import { buildActionReasonDetails } from "./reason-codes";
 
@@ -249,6 +250,10 @@ function buildWhere(filters: TaskFiltersInput): Prisma.TaskWhereInput {
     where.accountId = filters.entityId;
   }
 
+  if (filters.tracked !== undefined) {
+    where.isSlaTracked = filters.tracked;
+  }
+
   if (filters.overdue !== undefined) {
     const now = new Date();
     where.dueAt = filters.overdue ? { lt: now } : { gte: now };
@@ -270,6 +275,11 @@ function mapTaskRow(
     dueAt: Date;
     createdAt: Date;
     completedAt: Date | null;
+    isSlaTracked: boolean;
+    slaPolicyKey: string | null;
+    slaPolicyVersion: string | null;
+    slaTargetMinutes: number | null;
+    slaBreachedAt: Date | null;
     explanationJson: unknown;
     sourceReasonCodesJson: unknown;
     dedupeKey: string | null;
@@ -302,6 +312,7 @@ function mapTaskRow(
         }
       | null;
   },
+  now: Date,
 ): TaskQueueItemContract {
   const linkedEntity = buildLinkedEntitySummary({
     account: row.account,
@@ -333,6 +344,19 @@ function mapTaskRow(
   };
   const explanation = parseExplanation(row.explanationJson, fallbackExplanation);
   const priorityCode = priorityCodeByValue[row.priority];
+  const sla = mapTaskSlaSnapshot(
+    {
+      isSlaTracked: row.isSlaTracked,
+      slaPolicyKey: row.slaPolicyKey,
+      slaPolicyVersion: row.slaPolicyVersion,
+      slaTargetMinutes: row.slaTargetMinutes,
+      dueAt: row.dueAt,
+      slaBreachedAt: row.slaBreachedAt,
+      completedAt: row.completedAt,
+      status: row.status,
+    },
+    now,
+  );
 
   return {
     id: row.id,
@@ -353,7 +377,8 @@ function mapTaskRow(
     explanation,
     isOverdue:
       row.status !== TaskStatus.COMPLETED &&
-      row.dueAt.getTime() < Date.now(),
+      row.dueAt.getTime() < now.getTime(),
+    sla,
   };
 }
 
@@ -447,6 +472,7 @@ function mapRecommendationRow(
 }
 
 export async function getTaskById(id: string) {
+  const now = new Date();
   const row = await db.task.findUnique({
     where: { id },
     select: {
@@ -461,6 +487,11 @@ export async function getTaskById(id: string) {
       dueAt: true,
       createdAt: true,
       completedAt: true,
+      isSlaTracked: true,
+      slaPolicyKey: true,
+      slaPolicyVersion: true,
+      slaTargetMinutes: true,
+      slaBreachedAt: true,
       explanationJson: true,
       sourceReasonCodesJson: true,
       dedupeKey: true,
@@ -495,11 +526,12 @@ export async function getTaskById(id: string) {
     },
   });
 
-  return row ? mapTaskRow(row) : null;
+  return row ? mapTaskRow(row, now) : null;
 }
 
 export async function getTasks(filters: TaskFiltersInput = {}): Promise<TaskQueueContract> {
   const where = buildWhere(filters);
+  const now = new Date();
   const rows = await db.task.findMany({
     where,
     select: {
@@ -514,6 +546,11 @@ export async function getTasks(filters: TaskFiltersInput = {}): Promise<TaskQueu
       dueAt: true,
       createdAt: true,
       completedAt: true,
+      isSlaTracked: true,
+      slaPolicyKey: true,
+      slaPolicyVersion: true,
+      slaTargetMinutes: true,
+      slaBreachedAt: true,
       explanationJson: true,
       sourceReasonCodesJson: true,
       dedupeKey: true,
@@ -548,7 +585,17 @@ export async function getTasks(filters: TaskFiltersInput = {}): Promise<TaskQueu
     },
   });
 
-  const mappedRows = rows.map(mapTaskRow).sort((left, right) => {
+  const mappedRows = rows
+    .map((row) => mapTaskRow(row, now))
+    .filter((row) => {
+      if (!filters.slaState) {
+        return true;
+      }
+
+      const states = Array.isArray(filters.slaState) ? filters.slaState : [filters.slaState];
+      return states.includes(row.sla.currentState);
+    })
+    .sort((left, right) => {
     if (left.isOverdue !== right.isOverdue) {
       return left.isOverdue ? -1 : 1;
     }
@@ -582,7 +629,7 @@ export async function getTasks(filters: TaskFiltersInput = {}): Promise<TaskQueu
     }
 
     return new Date(right.createdAtIso).getTime() - new Date(left.createdAtIso).getTime();
-  });
+    });
 
   const statuses = filters.status
     ? Array.isArray(filters.status)
@@ -601,6 +648,12 @@ export async function getTasks(filters: TaskFiltersInput = {}): Promise<TaskQueu
       statuses,
       priorityCodes,
       overdue: filters.overdue ?? null,
+      tracked: filters.tracked ?? null,
+      slaStates: filters.slaState
+        ? Array.isArray(filters.slaState)
+          ? filters.slaState
+          : [filters.slaState]
+        : [],
       entityType: filters.entityType ?? "",
       entityId: filters.entityId ?? "",
     },

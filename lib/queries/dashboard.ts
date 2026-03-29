@@ -1,4 +1,4 @@
-import { differenceInMinutes, format, startOfDay, subDays } from "date-fns";
+import { format, startOfDay, subDays } from "date-fns";
 import { SignalStatus, TaskStatus, Temperature } from "@prisma/client";
 
 import type {
@@ -18,6 +18,7 @@ import { formatCompactNumber, formatEnumLabel, formatRelativeTime } from "@/lib/
 import { withMissingTableFallback } from "@/lib/prisma-errors";
 import { summarizeRoutingExplanation } from "@/lib/routing/explanation";
 import { getRecentRoutingDecisions } from "@/lib/routing/service";
+import { getDashboardSlaSummary } from "@/lib/sla";
 import type { ModulePlaceholderConfig } from "@/lib/types";
 
 function getRoutingExplanationSummary(value: unknown) {
@@ -57,7 +58,7 @@ function mapRecentSignal(signal: Awaited<ReturnType<typeof getRecentSignalFeed>>
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
-  const [signals, leads, routingDecisions, tasks, accountCount, hotAccountCount] = await Promise.all([
+  const [signals, routingDecisions, tasks, accountCount, hotAccountCount, slaSummary] = await Promise.all([
     db.signalEvent.findMany({
       select: {
         occurredAt: true,
@@ -65,13 +66,6 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
         status: true,
       },
       orderBy: { occurredAt: "desc" },
-    }),
-    db.lead.findMany({
-      select: {
-        createdAt: true,
-        firstResponseAt: true,
-        slaDeadlineAt: true,
-      },
     }),
     withMissingTableFallback(
       () =>
@@ -96,6 +90,7 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
         },
       },
     }),
+    getDashboardSlaSummary(),
   ]);
 
   const now = new Date();
@@ -114,28 +109,22 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
     };
   });
 
-  const responseTimes = leads
-    .filter((lead) => lead.firstResponseAt)
-    .map((lead) => differenceInMinutes(lead.firstResponseAt!, lead.createdAt));
-
-  const averageResponseMinutes =
-    responseTimes.length > 0
-      ? Math.round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length)
-      : 0;
-
   const unmatchedSignals = signals.filter((signal) => signal.status === SignalStatus.UNMATCHED).length;
-  const slaCompliant = leads.filter(
-    (lead) => lead.firstResponseAt && lead.slaDeadlineAt && lead.firstResponseAt <= lead.slaDeadlineAt,
-  ).length;
-  const slaAtRisk = leads.filter(
-    (lead) => !lead.firstResponseAt && lead.slaDeadlineAt && lead.slaDeadlineAt > now,
-  ).length;
-  const slaBreached = leads.length - slaCompliant - slaAtRisk;
+  const withinSlaCount =
+    slaSummary.leadMetrics.openTrackedCount -
+    slaSummary.leadMetrics.overdueCount -
+    slaSummary.leadMetrics.breachedCount;
+  const slaBreached = slaSummary.leadMetrics.breachedCount;
   const openTasks = tasks.filter((task) => task.status !== TaskStatus.COMPLETED).length;
   const signalsReceivedToday = signals.filter((signal) => signal.receivedAt >= today).length;
   const routedToday = routingDecisions.filter((decision) => decision.createdAt >= today).length;
   const sevenDaySignals = signalVolume14d.slice(-7).reduce((sum, point) => sum + point.signals, 0);
   const hotAccountShare = accountCount > 0 ? Math.round((hotAccountCount / accountCount) * 100) : 0;
+  const averageResponseMinutes = slaSummary.leadMetrics.averageSpeedToLeadMinutes ?? 0;
+  const attainmentRateLabel =
+    slaSummary.leadMetrics.attainmentRate === null
+      ? "No resolved tracked leads yet"
+      : `${Math.round(slaSummary.leadMetrics.attainmentRate * 100)}% attainment on resolved tracked leads`;
 
   return {
     asOfIso: now.toISOString(),
@@ -177,7 +166,7 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
         label: "SLA breaches",
         value: formatCompactNumber(slaBreached),
         rawValue: slaBreached,
-        change: `${slaCompliant} leads resolved within target`,
+        change: attainmentRateLabel,
         tone: slaBreached > 4 ? "danger" : "warning",
       },
       {
@@ -191,10 +180,11 @@ export async function getDashboardSummary(): Promise<DashboardSummaryContract> {
     ],
     signalVolume14d,
     slaHealth: [
-      { label: "Within SLA", value: slaCompliant, tone: "positive" },
-      { label: "At risk", value: slaAtRisk, tone: "warning" },
+      { label: "Within SLA", value: Math.max(0, withinSlaCount), tone: "positive" },
+      { label: "At risk", value: slaSummary.leadMetrics.overdueCount, tone: "warning" },
       { label: "Breached", value: slaBreached, tone: "danger" },
     ],
+    slaSummary,
   };
 }
 

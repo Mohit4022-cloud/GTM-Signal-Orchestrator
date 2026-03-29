@@ -7,6 +7,7 @@ export {
   generateActionsForLeadWithClient,
   updateTask,
 } from "./service";
+export { createLeadSlaEscalationTaskWithClient } from "./escalations";
 export {
   getActionRecommendationsForEntity,
   getRecommendationsList,

@@ -3,9 +3,9 @@ import { ZodError } from "zod";
 
 import type {
   PublicDashboardApiErrorResponseContract,
-  PublicDashboardSlaApiErrorCode,
+  PublicDashboardConversionApiErrorCode,
 } from "@/lib/contracts/dashboard";
-import { getDashboardSlaView } from "@/lib/data/dashboard";
+import { getDashboardConversionView } from "@/lib/data/dashboard";
 import { parseDashboardFilters } from "@/lib/validation/dashboard";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ function maybeThrowForcedError(request: Request) {
     process.env.NODE_ENV === "test" &&
     request.headers.get("x-force-error") === "1"
   ) {
-    throw new Error("Forced dashboard SLA route failure.");
+    throw new Error("Forced dashboard conversion route failure.");
   }
 }
 
@@ -26,16 +26,16 @@ function getErrorMessage(error: unknown) {
 
   return error instanceof Error
     ? error.message
-    : "Unexpected dashboard SLA error.";
+    : "Unexpected dashboard conversion error.";
 }
 
 function createErrorResponse(
-  code: PublicDashboardSlaApiErrorCode,
+  code: PublicDashboardConversionApiErrorCode,
   message: string,
   error: string | null,
   status: number,
 ) {
-  const payload: PublicDashboardApiErrorResponseContract<PublicDashboardSlaApiErrorCode> =
+  const payload: PublicDashboardApiErrorResponseContract<PublicDashboardConversionApiErrorCode> =
     {
       code,
       message,
@@ -49,21 +49,21 @@ export async function GET(request: Request) {
   try {
     maybeThrowForcedError(request);
     const filters = parseDashboardFilters(new URL(request.url).searchParams);
-    const summary = await getDashboardSlaView(filters);
-    return NextResponse.json(summary, { status: 200 });
+    const view = await getDashboardConversionView(filters);
+    return NextResponse.json(view, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {
       return createErrorResponse(
-        "DASHBOARD_SLA_VALIDATION_ERROR",
-        "Dashboard SLA filter validation failed.",
+        "DASHBOARD_CONVERSION_VALIDATION_ERROR",
+        "Dashboard conversion filter validation failed.",
         getErrorMessage(error),
         400,
       );
     }
 
     return createErrorResponse(
-      "DASHBOARD_SLA_INTERNAL_ERROR",
-      "Dashboard SLA summary failed.",
+      "DASHBOARD_CONVERSION_INTERNAL_ERROR",
+      "Dashboard conversion query failed.",
       getErrorMessage(error),
       500,
     );

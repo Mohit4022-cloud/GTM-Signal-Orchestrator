@@ -25,6 +25,20 @@ export type ModulePlaceholderConfig = {
 };
 
 export type {
+  AccountSummaryMode,
+  AccountSummaryRequest,
+  AccountSummaryResponseContract,
+  AccountSummarySourceSummaryContract,
+  ActionNoteMode,
+  ActionNoteRequest,
+  ActionNoteResponseContract,
+  ActionNoteSourceSummaryContract,
+  AiAssistStatus,
+  AiProviderMetadataContract,
+  PublicAiApiErrorCode,
+  PublicAiApiErrorResponseContract,
+} from "@/lib/contracts/ai";
+export type {
   AuditActorContract,
   AuditActorType,
   AuditEntitySummaryContract,

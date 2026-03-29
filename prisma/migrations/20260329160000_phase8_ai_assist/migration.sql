@@ -1,0 +1,4 @@
+-- SQLite does not persist enum alterations as database-level schema changes.
+-- This migration exists to record the Phase 5 AI assist audit-event expansion
+-- in migration history while the generated Prisma client picks up the new enum
+-- variants from prisma/schema.prisma.

@@ -74,8 +74,60 @@ export function getTaskPriorityTone(priority: string): BadgeTone {
     case "High":
       return "warning";
     case "Medium":
+    case "Normal":
       return "accent";
     case "Low":
+      return "neutral";
+    default:
+      return "neutral";
+  }
+}
+
+export function getTemperatureTone(temperature: string): BadgeTone {
+  switch (temperature) {
+    case "COLD":
+      return "neutral";
+    case "WARM":
+      return "warning";
+    case "HOT":
+      return "positive";
+    case "URGENT":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+export function getSlaStateTone(state: string): BadgeTone {
+  switch (state) {
+    case "on_track":
+      return "positive";
+    case "due_soon":
+      return "warning";
+    case "overdue":
+      return "danger";
+    case "breached":
+      return "danger";
+    case "completed":
+      return "neutral";
+    case "paused":
+      return "neutral";
+    default:
+      return "neutral";
+  }
+}
+
+export function getLeadStatusTone(status: string): BadgeTone {
+  switch (status) {
+    case "NEW":
+      return "accent";
+    case "WORKING":
+      return "accent";
+    case "QUALIFIED":
+      return "positive";
+    case "NURTURING":
+      return "warning";
+    case "DISQUALIFIED":
       return "neutral";
     default:
       return "neutral";

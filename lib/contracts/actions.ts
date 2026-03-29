@@ -6,6 +6,8 @@ import {
   TaskType,
 } from "@prisma/client";
 
+import type { SlaCurrentState, TaskSlaSnapshotContract } from "@/lib/contracts/sla";
+
 export const actionEntityTypeValues = ["lead", "account"] as const;
 
 export type ActionEntityType = (typeof actionEntityTypeValues)[number];
@@ -119,6 +121,7 @@ export type TaskQueueItemContract = {
   reasonSummary: ActionReasonSummaryContract;
   explanation: ActionExplanationContract;
   isOverdue: boolean;
+  sla: TaskSlaSnapshotContract;
 };
 
 export type TaskFiltersInput = {
@@ -126,6 +129,8 @@ export type TaskFiltersInput = {
   status?: TaskStatus | TaskStatus[];
   priorityCode?: TaskPriorityCode | TaskPriorityCode[];
   overdue?: boolean;
+  tracked?: boolean;
+  slaState?: SlaCurrentState | SlaCurrentState[];
   entityType?: ActionEntityType;
   entityId?: string;
 };
@@ -136,6 +141,8 @@ export type TaskQueueContract = {
     statuses: TaskStatus[];
     priorityCodes: TaskPriorityCode[];
     overdue: boolean | null;
+    tracked: boolean | null;
+    slaStates: SlaCurrentState[];
     entityType: ActionEntityType | "";
     entityId: string;
   };

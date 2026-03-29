@@ -150,6 +150,30 @@ enum TaskPriority {
   URGENT
 }
 
+enum SlaStatus {
+  ON_TRACK
+  DUE_SOON
+  OVERDUE
+  BREACHED
+  COMPLETED
+  PAUSED
+}
+
+enum SlaEntityType {
+  LEAD
+  TASK
+  ACCOUNT
+}
+
+enum SlaEventType {
+  ASSIGNED
+  STATE_CHANGED
+  BREACHED
+  MET
+  RESOLVED
+  ESCALATION_CREATED
+}
+
 enum ActionCategory {
   IMMEDIATE_RESPONSE
   ENRICHMENT
@@ -195,7 +219,9 @@ enum AuditEventType {
   ACTION_RECOMMENDATION_CREATED
   DUPLICATE_ACTION_PREVENTED
   ACTION_GENERATION_SKIPPED
+  SLA_ASSIGNED
   SLA_BREACHED
+  SLA_RESOLVED
   USER_OVERRIDE
   RULE_CONFIG_CHANGED
 }
@@ -273,6 +299,7 @@ model Account {
   routingDecisions  RoutingDecision[]
   auditLogs         AuditLog[]
   scoreHistory      ScoreHistory[]
+  slaEvents         SlaEvent[]
 
   @@index([segment, geography])
   @@index([overallScore])
@@ -325,7 +352,12 @@ model Lead {
   scoreExplanationJson Json          @default("{}")
   scoreLastComputedAt DateTime?
   scoringVersion  String             @default("scoring/v1")
+  slaPolicyKey    String?
+  slaPolicyVersion String?
+  slaTargetMinutes Int?
   slaDeadlineAt   DateTime?
+  slaStatus       SlaStatus?
+  slaBreachedAt   DateTime?
   firstResponseAt DateTime?
   routedAt        DateTime?
   createdAt       DateTime           @default(now())
@@ -339,10 +371,12 @@ model Lead {
   actionRecommendations ActionRecommendation[]
   scoreHistory    ScoreHistory[]
   auditLogs       AuditLog[]
+  slaEvents       SlaEvent[]
 
   @@index([accountId])
   @@index([currentOwnerId])
   @@index([status, temperature])
+  @@index([slaStatus, slaDeadlineAt])
 }
 
 model SignalEvent {
@@ -462,6 +496,12 @@ model Task {
   actionType               ActionType   @default(MANUAL_CUSTOM)
   actionCategory           ActionCategory @default(MANUAL)
   priority                 TaskPriority
+  isSlaTracked             Boolean      @default(false)
+  slaPolicyKey             String?
+  slaPolicyVersion         String?
+  slaTargetMinutes         Int?
+  slaStatus                SlaStatus?
+  slaBreachedAt            DateTime?
   dueAt                    DateTime
   status                   TaskStatus
   title                    String
@@ -481,11 +521,13 @@ model Task {
   triggerSignal            SignalEvent? @relation("TaskTriggerSignal", fields: [triggerSignalId], references: [id], onDelete: SetNull)
   triggerRoutingDecision   RoutingDecision? @relation("TaskTriggerRoutingDecision", fields: [triggerRoutingDecisionId], references: [id], onDelete: SetNull)
   triggerScoreHistory      ScoreHistory? @relation("TaskTriggerScoreHistory", fields: [triggerScoreHistoryId], references: [id], onDelete: SetNull)
+  slaEvents                SlaEvent[]
 
   @@index([accountId])
   @@index([leadId])
   @@index([ownerId])
   @@index([status, dueAt])
+  @@index([isSlaTracked, slaStatus, dueAt])
   @@index([triggerSignalId])
   @@index([triggerRoutingDecisionId])
   @@index([triggerScoreHistoryId])
@@ -542,6 +584,32 @@ model AuditLog {
 
   @@index([accountId, createdAt])
   @@index([leadId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model SlaEvent {
+  id            String        @id
+  entityType    SlaEntityType
+  entityId      String
+  leadId        String?
+  taskId        String?
+  accountId     String?
+  eventType     SlaEventType
+  policyVersion String?
+  policyKey     String?
+  targetMinutes Int?
+  dueAt         DateTime?
+  breachedAt    DateTime?
+  resolvedAt    DateTime?
+  explanationJson Json       @default("{}")
+  createdAt     DateTime      @default(now())
+  lead          Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  task          Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  account       Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([taskId, createdAt])
   @@index([eventType, createdAt])
 }
 

@@ -6,6 +6,11 @@ import type {
   ActionReasonSummaryContract,
   TaskPriorityCode,
 } from "@/lib/contracts/actions";
+import type {
+  DashboardSlaSummaryContract,
+  LeadSlaSnapshotContract,
+  TaskSlaSnapshotContract,
+} from "@/lib/contracts/sla";
 
 export type MetricTone = "default" | "positive" | "warning" | "danger";
 
@@ -48,6 +53,7 @@ export type DashboardSummaryContract = {
   kpis: DashboardKpiContract[];
   signalVolume14d: DashboardTrendPoint[];
   slaHealth: SlaHealthPoint[];
+  slaSummary: DashboardSlaSummaryContract;
 };
 
 export type HotAccountContract = {
@@ -224,6 +230,7 @@ export type RelatedLeadContract = {
   firstResponseAtLabel: string | null;
   routedAtIso: string | null;
   routedAtLabel: string | null;
+  sla: LeadSlaSnapshotContract;
 };
 
 export type AccountTimelineEventContract = RecentSignalContract & {
@@ -250,6 +257,7 @@ export type AccountOpenTaskContract = {
   reasonSummary: ActionReasonSummaryContract;
   explanation: ActionExplanationContract;
   isOverdue: boolean;
+  sla: TaskSlaSnapshotContract;
 };
 
 export type ScoreBreakdownItemContract = {

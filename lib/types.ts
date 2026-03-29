@@ -47,6 +47,14 @@ export type {
   UpdateTaskRequest,
 } from "@/lib/contracts/actions";
 export type {
+  LeadDetailContract,
+  LeadQueueContract,
+  LeadQueueItemContract,
+  PublicLeadApiErrorCode,
+  PublicLeadApiErrorResponseContract,
+  UpdateLeadRequest,
+} from "@/lib/contracts/leads";
+export type {
   AccountDetailContract,
   AccountDetailView,
   AccountListRow,
@@ -82,6 +90,19 @@ export type {
   TimelineEvent,
   UnmatchedSignalItem,
 } from "@/lib/contracts/data-access";
+export type {
+  DashboardAggregateSlaMetricsContract,
+  DashboardLeadSlaMetricsContract,
+  DashboardSlaBucketMetricsContract,
+  DashboardSlaSummaryContract,
+  LeadSlaSnapshotContract,
+  SlaCurrentState,
+  SlaEntityType,
+  SlaEventContract,
+  SlaEventType,
+  SlaSnapshotContract,
+  TaskSlaSnapshotContract,
+} from "@/lib/contracts/sla";
 export type {
   AccountTimelineItemContract,
   CanonicalSignalEventContract,

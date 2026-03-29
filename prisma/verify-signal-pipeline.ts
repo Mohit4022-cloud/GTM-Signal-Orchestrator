@@ -103,7 +103,7 @@ async function main() {
   const recentSignals = await getRecentSignals(5);
   invariant(recentSignals.length === 5, `Expected 5 recent signals, found ${recentSignals.length}.`);
 
-  const accountTimeline = await getAccountTimeline("acc_northstar_analytics", { limit: 5 });
+  const accountTimeline = await getAccountTimeline("acc_northstar_analytics", { limit: 25 });
   invariant(accountTimeline.length > 0, "Expected Northstar account timeline rows.");
   invariant(
     accountTimeline.some((item) => item.signalId === matchedResult.signalId),

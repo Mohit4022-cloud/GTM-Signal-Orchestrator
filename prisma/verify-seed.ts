@@ -1,4 +1,5 @@
 import {
+  ActionType,
   AuditEventType,
   Geography,
   PrismaClient,
@@ -11,6 +12,10 @@ import {
   Temperature,
 } from "@prisma/client";
 
+import {
+  actionReasonCodeValues,
+  type ActionReasonCode,
+} from "../lib/contracts/actions";
 import {
   identityResolutionCodeValues,
   type IdentityResolutionCode,
@@ -48,6 +53,7 @@ const routingDecisionContractTypeByPrisma: Record<PrismaRoutingDecisionType, str
   OPS_REVIEW_QUEUE: "ops_review_queue",
 };
 const reasonCodeSet = new Set<IdentityResolutionCode>(identityResolutionCodeValues);
+const actionReasonCodeSet = new Set<ActionReasonCode>(actionReasonCodeValues);
 const scoreReasonCodeSet = new Set<ScoreReasonCode>(scoreReasonCodeValues);
 const routingReasonCodeSet = new Set<RoutingReasonCode>(routingReasonCodeValues);
 
@@ -78,6 +84,16 @@ function parseScoreReasonCodes(value: unknown): ScoreReasonCode[] {
 
   return value.filter((item): item is ScoreReasonCode => {
     return typeof item === "string" && scoreReasonCodeSet.has(item as ScoreReasonCode);
+  });
+}
+
+function parseActionReasonCodes(value: unknown): ActionReasonCode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is ActionReasonCode => {
+    return typeof item === "string" && actionReasonCodeSet.has(item as ActionReasonCode);
   });
 }
 
@@ -156,7 +172,18 @@ function getComponentScore(components: Array<{ key: string; score: number }>, ke
 }
 
 async function main() {
-  const [users, accounts, contacts, leads, signals, tasks, routingDecisions, scoreHistory, auditLogs] =
+  const [
+    users,
+    accounts,
+    contacts,
+    leads,
+    signals,
+    tasks,
+    actionRecommendations,
+    routingDecisions,
+    scoreHistory,
+    auditLogs,
+  ] =
     await Promise.all([
       prisma.user.findMany({
         select: {
@@ -250,6 +277,30 @@ async function main() {
           accountId: true,
           leadId: true,
           ownerId: true,
+          taskType: true,
+          actionType: true,
+          status: true,
+          dedupeKey: true,
+          sourceReasonCodesJson: true,
+          explanationJson: true,
+          triggerSignalId: true,
+          triggerRoutingDecisionId: true,
+          triggerScoreHistoryId: true,
+        },
+      }),
+      prisma.actionRecommendation.findMany({
+        select: {
+          id: true,
+          accountId: true,
+          leadId: true,
+          suggestedOwnerId: true,
+          recommendationType: true,
+          dedupeKey: true,
+          sourceReasonCodesJson: true,
+          explanationJson: true,
+          triggerSignalId: true,
+          triggerRoutingDecisionId: true,
+          triggerScoreHistoryId: true,
         },
       }),
       prisma.routingDecision.findMany({
@@ -306,8 +357,15 @@ async function main() {
   invariant(contacts.length === 40, `Expected 40 contacts, found ${contacts.length}.`);
   invariant(leads.length === 30, `Expected 30 leads, found ${leads.length}.`);
   invariant(signals.length >= 120, `Expected at least 120 signal events, found ${signals.length}.`);
-  invariant(tasks.length === 40, `Expected 40 tasks, found ${tasks.length}.`);
-  invariant(routingDecisions.length === 30, `Expected 30 routing decisions, found ${routingDecisions.length}.`);
+  invariant(tasks.length >= 8, `Expected at least 8 tasks, found ${tasks.length}.`);
+  invariant(
+    actionRecommendations.length >= 3,
+    `Expected at least 3 action recommendations, found ${actionRecommendations.length}.`,
+  );
+  invariant(
+    routingDecisions.length >= 30,
+    `Expected at least 30 routing decisions, found ${routingDecisions.length}.`,
+  );
 
   const accountIds = new Set(accounts.map((account) => account.id));
   const userIds = new Set(users.map((user) => user.id));
@@ -323,6 +381,8 @@ async function main() {
   const signalTypes = new Set<SignalType>();
   const identityReasonCodes = new Set<IdentityResolutionCode>();
   const signalEventIds = new Set(signals.map((signal) => signal.id));
+  const taskDedupeKeys = new Set<string>();
+  const recommendationDedupeKeys = new Set<string>();
 
   for (const user of users) {
     invariant(user.maxOpenHotLeads >= 1, `User ${user.id} must define maxOpenHotLeads.`);
@@ -445,8 +505,115 @@ async function main() {
     invariant((leadsByAccount.get(account.id) ?? 0) >= 1, `Account ${account.id} should have at least 1 lead.`);
   }
 
+  for (const task of tasks) {
+    if (task.accountId) {
+      invariant(accountIds.has(task.accountId), `Task ${task.id} references missing account ${task.accountId}.`);
+    }
+
+    if (task.leadId) {
+      invariant(leadIds.has(task.leadId), `Task ${task.id} references missing lead ${task.leadId}.`);
+    }
+
+    if (task.ownerId) {
+      invariant(userIds.has(task.ownerId), `Task ${task.id} references missing owner ${task.ownerId}.`);
+    }
+
+    invariant(
+      parseActionReasonCodes(task.sourceReasonCodesJson).length > 0,
+      `Task ${task.id} is missing action reason codes.`,
+    );
+    invariant(parseExplanation(task.explanationJson), `Task ${task.id} is missing explanation content.`);
+
+    if (task.triggerSignalId) {
+      invariant(signalEventIds.has(task.triggerSignalId), `Task ${task.id} references missing trigger signal.`);
+    }
+
+    if (task.triggerRoutingDecisionId) {
+      invariant(
+        routingDecisions.some((decision) => decision.id === task.triggerRoutingDecisionId),
+        `Task ${task.id} references missing routing decision ${task.triggerRoutingDecisionId}.`,
+      );
+    }
+
+    if (task.triggerScoreHistoryId) {
+      invariant(
+        scoreHistory.some((entry) => entry.id === task.triggerScoreHistoryId),
+        `Task ${task.id} references missing score history ${task.triggerScoreHistoryId}.`,
+      );
+    }
+
+    if (task.dedupeKey) {
+      invariant(!taskDedupeKeys.has(task.dedupeKey), `Duplicate task dedupe key detected: ${task.dedupeKey}.`);
+      taskDedupeKeys.add(task.dedupeKey);
+    }
+  }
+
+  for (const recommendation of actionRecommendations) {
+    if (recommendation.accountId) {
+      invariant(
+        accountIds.has(recommendation.accountId),
+        `Recommendation ${recommendation.id} references missing account ${recommendation.accountId}.`,
+      );
+    }
+
+    if (recommendation.leadId) {
+      invariant(
+        leadIds.has(recommendation.leadId),
+        `Recommendation ${recommendation.id} references missing lead ${recommendation.leadId}.`,
+      );
+    }
+
+    if (recommendation.suggestedOwnerId) {
+      invariant(
+        userIds.has(recommendation.suggestedOwnerId),
+        `Recommendation ${recommendation.id} references missing owner ${recommendation.suggestedOwnerId}.`,
+      );
+    }
+
+    invariant(
+      parseActionReasonCodes(recommendation.sourceReasonCodesJson).length > 0,
+      `Recommendation ${recommendation.id} is missing action reason codes.`,
+    );
+    invariant(
+      parseExplanation(recommendation.explanationJson),
+      `Recommendation ${recommendation.id} is missing explanation content.`,
+    );
+
+    if (recommendation.triggerSignalId) {
+      invariant(
+        signalEventIds.has(recommendation.triggerSignalId),
+        `Recommendation ${recommendation.id} references missing trigger signal.`,
+      );
+    }
+
+    if (recommendation.triggerRoutingDecisionId) {
+      invariant(
+        routingDecisions.some((decision) => decision.id === recommendation.triggerRoutingDecisionId),
+        `Recommendation ${recommendation.id} references missing routing decision ${recommendation.triggerRoutingDecisionId}.`,
+      );
+    }
+
+    if (recommendation.triggerScoreHistoryId) {
+      invariant(
+        scoreHistory.some((entry) => entry.id === recommendation.triggerScoreHistoryId),
+        `Recommendation ${recommendation.id} references missing score history ${recommendation.triggerScoreHistoryId}.`,
+      );
+    }
+
+    if (recommendation.dedupeKey) {
+      invariant(
+        !recommendationDedupeKeys.has(recommendation.dedupeKey),
+        `Duplicate recommendation dedupe key detected: ${recommendation.dedupeKey}.`,
+      );
+      recommendationDedupeKeys.add(recommendation.dedupeKey);
+    }
+  }
+
   const routingDecisionsByLeadId = new Map(
-    routingDecisions.filter((decision) => decision.leadId !== null).map((decision) => [decision.leadId!, decision]),
+    [...routingDecisions]
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+      .filter((decision) => decision.leadId !== null)
+      .map((decision) => [decision.leadId!, decision]),
   );
 
   invariant(
@@ -598,6 +765,82 @@ async function main() {
   );
   invariant(novachannelDecision.assignedOwnerId === null, "NovaChannel should not assign an owner.");
   invariant(novachannelDecision.assignedQueue === "ops-review", "NovaChannel should route to ops-review.");
+
+  invariant(
+    tasks.some(
+      (task) =>
+        task.leadId === "acc_atlas_grid_lead_01" &&
+        task.actionType === ActionType.CALL_WITHIN_15_MINUTES,
+    ),
+    "Expected a hot inbound call task for the Atlas Grid demo request.",
+  );
+  invariant(
+    tasks.some(
+      (task) =>
+        task.leadId === "acc_atlas_grid_lead_01" &&
+        task.actionType === ActionType.SEND_FOLLOW_UP_EMAIL,
+    ),
+    "Expected a hot inbound email follow-up task for the Atlas Grid demo request.",
+  );
+  invariant(
+    tasks.some(
+      (task) =>
+        task.leadId === "acc_atlas_grid_lead_01" &&
+        task.actionType === ActionType.HANDOFF_TO_AE,
+    ),
+    "Expected a strategic AE handoff task for the Atlas Grid demo request.",
+  );
+  invariant(
+    tasks.some(
+      (task) =>
+        task.leadId === "acc_atlas_grid_lead_01" &&
+        task.actionType === ActionType.ENRICH_MISSING_CONTACT_FIELDS,
+    ),
+    "Expected a missing-contact enrichment task for the Atlas Grid lead.",
+  );
+  invariant(
+    tasks.some(
+      (task) =>
+        task.leadId === "acc_atlas_grid_lead_01" &&
+        task.actionType === ActionType.ESCALATE_SLA_BREACH,
+    ),
+    "Expected an SLA escalation task for the Atlas Grid lead.",
+  );
+  invariant(
+    tasks.some(
+      (task) =>
+        task.accountId === "acc_beaconops" && task.actionType === ActionType.RESEARCH_ACCOUNT,
+    ),
+    "Expected a warm-pricing research task for BeaconOps.",
+  );
+  invariant(
+    tasks.filter((task) => task.actionType === ActionType.HANDOFF_TO_AE).length >= 2,
+    "Expected both strategic-demo and product-qualified handoff tasks.",
+  );
+  invariant(
+    actionRecommendations.some(
+      (recommendation) =>
+        recommendation.accountId === "acc_beaconops" &&
+        recommendation.recommendationType === ActionType.ADD_TO_NURTURE_QUEUE,
+    ),
+    "Expected a nurture recommendation for BeaconOps pricing activity.",
+  );
+  invariant(
+    actionRecommendations.some(
+      (recommendation) =>
+        recommendation.accountId === "acc_signalnest" &&
+        recommendation.recommendationType === ActionType.GENERATE_ACCOUNT_SUMMARY,
+    ),
+    "Expected an account-summary recommendation for SignalNest.",
+  );
+  invariant(
+    actionRecommendations.some(
+      (recommendation) =>
+        recommendation.accountId === "acc_summitflow_finance" &&
+        recommendation.recommendationType === ActionType.PAUSE_ACTIVE_ACCOUNT,
+    ),
+    "Expected an active-account pause recommendation for SummitFlow Finance.",
+  );
 
   let matchedSignalCount = 0;
   let unmatchedSignalCount = 0;
@@ -763,6 +1006,22 @@ async function main() {
   invariant(
     auditLogs.some((entry) => entry.eventType === AuditEventType.ROUTING_SENT_TO_OPS_REVIEW),
     "Expected at least one ops-review routing audit log.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === AuditEventType.TASK_CREATED),
+    "Expected task-created audit logs from the action engine.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === AuditEventType.ACTION_RECOMMENDATION_CREATED),
+    "Expected action-recommendation audit logs from the action engine.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === AuditEventType.DUPLICATE_ACTION_PREVENTED),
+    "Expected duplicate-action prevention audit logs.",
+  );
+  invariant(
+    auditLogs.some((entry) => entry.eventType === AuditEventType.ACTION_GENERATION_SKIPPED),
+    "Expected action-generation skipped audit logs for active-account pauses.",
   );
 
   console.log("Seed verification passed.");

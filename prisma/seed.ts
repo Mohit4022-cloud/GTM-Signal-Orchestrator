@@ -11,12 +11,15 @@ import {
   Prisma,
   Segment,
   SignalType,
-  TaskPriority,
   TaskStatus,
-  TaskType,
   Temperature,
 } from "@prisma/client";
 
+import {
+  createManualTask,
+  generateActionsForAccount,
+  generateActionsForLead,
+} from "../lib/actions";
 import type { IngestSignalInput } from "../lib/contracts/signals";
 import { ingestSignal } from "../lib/data/signals";
 import { db } from "../lib/db";
@@ -592,19 +595,6 @@ const secondaryLeadAccountIds = new Set([
   "acc_meridian_freight",
   "acc_atlas_grid",
 ]);
-
-const accountTaskAccountIds = [
-  "acc_northstar_analytics",
-  "acc_summitflow_finance",
-  "acc_harborpoint",
-  "acc_orbitiq",
-  "acc_ironpeak",
-  "acc_rivetstack",
-  "acc_latticebio",
-  "acc_aperture_robotics",
-  "acc_meridian_freight",
-  "acc_atlas_grid",
-] as const;
 
 const contactFirstNames = [
   "Avery",
@@ -1462,30 +1452,45 @@ function getFirstResponseAt(
   return addMinutes(routedAt, responseMinutes);
 }
 
-function getLeadTaskPriority(temperature: Temperature) {
-  if (temperature === Temperature.URGENT) return TaskPriority.URGENT;
-  if (temperature === Temperature.HOT) return TaskPriority.HIGH;
-  return TaskPriority.MEDIUM;
+async function ingestSeedSignal(input: IngestSignalInput) {
+  const result = await ingestSignal(input);
+
+  if (!result.created) {
+    throw new Error(`Seed signal dedupe collision detected for ${input.event_type}.`);
+  }
+
+  return {
+    signalId: result.signalId,
+    occurredAt: new Date(input.occurred_at),
+    receivedAt: new Date(input.received_at ?? input.occurred_at),
+  };
 }
 
-function getLeadTaskDueAt(lead: { temperature: Temperature }, sequenceIndex: number) {
-  if (lead.temperature === Temperature.URGENT) {
-    return addHours(baseDate, 2 + (sequenceIndex % 3));
-  }
-
-  if (lead.temperature === Temperature.HOT) {
-    return addHours(baseDate, 6 + (sequenceIndex % 6));
-  }
-
-  if (lead.temperature === Temperature.WARM) {
-    return addHours(baseDate, 24 + (sequenceIndex % 3) * 12);
-  }
-
-  return addHours(baseDate, 48 + (sequenceIndex % 3) * 12);
+async function clearGeneratedOperatorArtifacts() {
+  await prisma.auditLog.deleteMany({
+    where: {
+      eventType: {
+        in: [
+          AuditEventType.ROUTE_ASSIGNED,
+          AuditEventType.ROUTING_FALLBACK_CAPACITY,
+          AuditEventType.ROUTING_SENT_TO_OPS_REVIEW,
+          AuditEventType.TASK_CREATED,
+          AuditEventType.TASK_UPDATED,
+          AuditEventType.ACTION_RECOMMENDATION_CREATED,
+          AuditEventType.DUPLICATE_ACTION_PREVENTED,
+          AuditEventType.ACTION_GENERATION_SKIPPED,
+        ],
+      },
+    },
+  });
+  await prisma.actionRecommendation.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.routingDecision.deleteMany();
 }
 
 export async function clearDemoData() {
   await prisma.auditLog.deleteMany();
+  await prisma.actionRecommendation.deleteMany();
   await prisma.task.deleteMany();
   await prisma.routingDecision.deleteMany();
   await prisma.scoreHistory.deleteMany();
@@ -1913,16 +1918,7 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
   }> = [];
 
   for (const signalInput of seededSignalInputs) {
-    const result = await ingestSignal(signalInput);
-    if (!result.created) {
-      throw new Error(`Seed signal dedupe collision detected for ${signalInput.event_type}.`);
-    }
-
-    ingestedSignals.push({
-      signalId: result.signalId,
-      occurredAt: new Date(signalInput.occurred_at),
-      receivedAt: new Date(signalInput.received_at ?? signalInput.occurred_at),
-    });
+    ingestedSignals.push(await ingestSeedSignal(signalInput));
   }
 
   await prisma.$transaction(
@@ -1983,18 +1979,7 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     });
   }
 
-  await prisma.routingDecision.deleteMany();
-  await prisma.auditLog.deleteMany({
-    where: {
-      eventType: {
-        in: [
-          AuditEventType.ROUTE_ASSIGNED,
-          AuditEventType.ROUTING_FALLBACK_CAPACITY,
-          AuditEventType.ROUTING_SENT_TO_OPS_REVIEW,
-        ],
-      },
-    },
-  });
+  await clearGeneratedOperatorArtifacts();
   await prisma.$transaction(
     leads.map((lead) =>
       prisma.lead.update({
@@ -2018,92 +2003,221 @@ export async function seedDemoData(options: { logSummary?: boolean; reset?: bool
     }
   }
 
-  const refreshedAccounts = await prisma.account.findMany({
-    orderBy: {
-      createdAt: "asc",
+  const atlasGridAccount = getAccountOrThrow(accounts, "acc_atlas_grid");
+  const atlasGridPrimaryContact = getContactOrThrow(contacts, "acc_atlas_grid_contact_01");
+  const beaconOpsAccount = getAccountOrThrow(accounts, "acc_beaconops");
+  const beaconOpsPrimaryContact = getContactOrThrow(contacts, "acc_beaconops_contact_01");
+  const signalNestAccount = getAccountOrThrow(accounts, "acc_signalnest");
+  const signalNestPrimaryContact = getContactOrThrow(contacts, "acc_signalnest_contact_01");
+  const summitFlowAccount = getAccountOrThrow(accounts, "acc_summitflow_finance");
+  const summitFlowPrimaryContact = getContactOrThrow(contacts, "acc_summitflow_finance_contact_01");
+
+  await prisma.account.update({
+    where: { id: "acc_atlas_grid" },
+    data: {
+      lifecycleStage: LifecycleStage.ENGAGED,
     },
   });
-  const refreshedLeads = await prisma.lead.findMany({
-    orderBy: {
-      createdAt: "asc",
+  await prisma.contact.update({
+    where: { id: "acc_atlas_grid_contact_01" },
+    data: {
+      phone: null,
     },
   });
-  const accountById = new Map(refreshedAccounts.map((account) => [account.id, account]));
+  await prisma.lead.update({
+    where: { id: "acc_atlas_grid_lead_01" },
+    data: {
+      inboundType: "Inbound",
+      temperature: Temperature.HOT,
+      status: LeadStatus.WORKING,
+      firstResponseAt: null,
+    },
+  });
 
-  const tasks = [
-    ...refreshedLeads.map((lead, index) => {
-      const account = accountById.get(lead.accountId)!;
-      const isSecondaryLead = lead.id.endsWith("_lead_02");
-      const primaryTaskStatus = index % 4 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN;
-      const secondaryTaskStatus =
-        index % 3 === 0 ? TaskStatus.COMPLETED : index % 2 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN;
-      const status = isSecondaryLead ? secondaryTaskStatus : primaryTaskStatus;
-      const dueAt = getLeadTaskDueAt(lead, index);
+  const atlasGridSignal = await ingestSeedSignal({
+    source_system: "marketing_automation",
+    event_type: "form_fill",
+    account_domain: atlasGridAccount.domain,
+    contact_email: atlasGridPrimaryContact.email,
+    occurred_at: subMinutes(baseDate, 36).toISOString(),
+    received_at: subMinutes(baseDate, 30).toISOString(),
+    payload: {
+      form_id: "request_demo",
+      submission_id: "atlas_grid_action_demo_1",
+      campaign: "board_priority",
+    },
+  });
+  await prisma.task.deleteMany({
+    where: {
+      accountId: "acc_atlas_grid",
+      leadId: null,
+    },
+  });
+  await prisma.actionRecommendation.deleteMany({
+    where: {
+      accountId: "acc_atlas_grid",
+      leadId: null,
+    },
+  });
+  const atlasGridRoutingDecision = await prisma.routingDecision.findFirstOrThrow({
+    where: {
+      leadId: "acc_atlas_grid_lead_01",
+      triggerSignalId: atlasGridSignal.signalId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+      slaDueAt: true,
+    },
+  });
+  await generateActionsForLead("acc_atlas_grid_lead_01", {
+    effectiveAt: atlasGridSignal.receivedAt,
+    triggerSignalId: atlasGridSignal.signalId,
+    triggerRoutingDecisionId: atlasGridRoutingDecision.id,
+  });
+  await generateActionsForLead("acc_atlas_grid_lead_01", {
+    effectiveAt:
+      atlasGridRoutingDecision.slaDueAt
+        ? addMinutes(atlasGridRoutingDecision.slaDueAt, 1)
+        : addMinutes(atlasGridSignal.receivedAt, 50),
+    triggerSignalId: atlasGridSignal.signalId,
+    triggerRoutingDecisionId: atlasGridRoutingDecision.id,
+  });
 
-      return {
-        id: `${lead.id}_task_01`,
-        leadId: lead.id,
-        accountId: lead.accountId,
-        ownerId: lead.currentOwnerId,
-        taskType:
-          lead.temperature === Temperature.URGENT
-            ? TaskType.CALL
-            : lead.temperature === Temperature.HOT
-              ? TaskType.EMAIL
-              : TaskType.RESEARCH,
-        priority: getLeadTaskPriority(lead.temperature),
-        dueAt,
-        status,
-        title:
-          lead.temperature === Temperature.URGENT
-            ? `Call ${account.name} within the active SLA`
-            : isSecondaryLead
-              ? `Expand buying committee coverage for ${account.name}`
-              : `Send tailored follow-up to ${account.name}`,
-        description:
-          lead.temperature === Temperature.URGENT
-            ? "Recent pricing, meeting, and intent activity signals a live opportunity. Confirm timing and next-step owner."
-            : isSecondaryLead
-              ? "Bring the executive stakeholder into the thread and validate decision criteria across the buying group."
-              : "Use the latest signal bundle to personalize the next touch and qualify urgency.",
-        createdAt: lead.createdAt,
-        completedAt: status === TaskStatus.COMPLETED ? addHours(lead.createdAt, 8) : null,
-      };
-    }),
-    ...accountTaskAccountIds.map((accountId, index) => {
-      const account = accountById.get(accountId)!;
-      const ownerId =
-        account.ownerId ?? account.namedOwnerId ?? getFallbackLeadOwner(account.geography);
-      const isHotAccount = account.status === AccountStatus.HOT;
+  await prisma.signalEvent.updateMany({
+    where: {
+      accountId: "acc_beaconops",
+      eventType: SignalType.FORM_FILL,
+      occurredAt: {
+        gte: subDays(baseDate, 30),
+      },
+    },
+    data: {
+      occurredAt: subDays(baseDate, 45),
+      receivedAt: subDays(baseDate, 45),
+    },
+  });
+  const beaconOpsSignal = await ingestSeedSignal({
+    source_system: "website",
+    event_type: "pricing_page_visit",
+    account_domain: beaconOpsAccount.domain,
+    contact_email: beaconOpsPrimaryContact.email,
+    occurred_at: subHours(baseDate, 11).toISOString(),
+    received_at: subHours(baseDate, 10).toISOString(),
+    payload: {
+      page: "/pricing",
+      session_id: "beaconops_action_pricing_1",
+      visit_count: 5,
+    },
+  });
+  await prisma.account.update({
+    where: { id: "acc_beaconops" },
+    data: {
+      temperature: Temperature.WARM,
+    },
+  });
+  await generateActionsForAccount("acc_beaconops", {
+    effectiveAt: beaconOpsSignal.receivedAt,
+    triggerSignalId: beaconOpsSignal.signalId,
+  });
 
-      return {
-        id: `${account.id}_task_account_${String(index + 1).padStart(2, "0")}`,
-        leadId: null,
-        accountId: account.id,
-        ownerId,
-        taskType: index % 2 === 0 ? TaskType.REVIEW : TaskType.HANDOFF,
-        priority: isHotAccount ? TaskPriority.HIGH : TaskPriority.MEDIUM,
-        dueAt: isHotAccount ? addHours(baseDate, 10 + index) : addHours(baseDate, 36 + index * 4),
-        status: index % 3 === 0 ? TaskStatus.IN_PROGRESS : TaskStatus.OPEN,
-        title:
-          isHotAccount
-            ? `Prepare executive brief for ${account.name}`
-            : `Refresh account plan for ${account.name}`,
-        description:
-          isHotAccount
-            ? "Consolidate the latest signals, routing trace, and stakeholder map ahead of the next executive touch."
-            : "Review open signal clusters, confirm owner coverage, and update the next-best action summary.",
-        createdAt: subDays(baseDate, 1),
-        completedAt: null,
-      };
-    }),
-  ];
+  const signalNestSignal = await ingestSeedSignal({
+    source_system: "product",
+    event_type: "product_usage_milestone",
+    account_domain: signalNestAccount.domain,
+    contact_email: signalNestPrimaryContact.email,
+    occurred_at: subHours(baseDate, 7).toISOString(),
+    received_at: subHours(baseDate, 6).toISOString(),
+    payload: {
+      workspace_id: "signalnest_action_workspace",
+      milestone: "connected_crm",
+      user_id: "signalnest_action_user_1",
+    },
+  });
+  await generateActionsForAccount("acc_signalnest", {
+    effectiveAt: signalNestSignal.receivedAt,
+    triggerSignalId: signalNestSignal.signalId,
+  });
 
-  await prisma.task.createMany({ data: tasks });
+  await prisma.lead.update({
+    where: { id: "acc_summitflow_finance_lead_01" },
+    data: {
+      inboundType: "Inbound",
+      temperature: Temperature.HOT,
+      status: LeadStatus.WORKING,
+      firstResponseAt: null,
+    },
+  });
+  const summitFlowPauseSignal = await ingestSeedSignal({
+    source_system: "marketing_automation",
+    event_type: "form_fill",
+    account_domain: summitFlowAccount.domain,
+    contact_email: summitFlowPrimaryContact.email,
+    occurred_at: subMinutes(baseDate, 24).toISOString(),
+    received_at: subMinutes(baseDate, 18).toISOString(),
+    payload: {
+      form_id: "request_demo",
+      submission_id: "summitflow_action_demo_1",
+      campaign: "executive_expansion",
+    },
+  });
+  await generateActionsForLead("acc_summitflow_finance_lead_01", {
+    effectiveAt: summitFlowPauseSignal.receivedAt,
+    triggerSignalId: summitFlowPauseSignal.signalId,
+  });
+
+  await createManualTask({
+    accountId: "acc_northstar_analytics",
+    ownerId: "usr_dante_kim",
+    taskType: "REVIEW",
+    priorityCode: "P3",
+    dueAtIso: subHours(baseDate, 16).toISOString(),
+    status: TaskStatus.COMPLETED,
+    title: "Capture Northstar onboarding notes",
+    description: "Close out the onboarding review and store the account context for the next AE touch.",
+  });
+  await createManualTask({
+    leadId: "acc_cedarbridge_health_lead_01",
+    accountId: "acc_cedarbridge_health",
+    ownerId: "usr_amelia_ross",
+    taskType: "EMAIL",
+    priorityCode: "P4",
+    dueAtIso: subHours(baseDate, 12).toISOString(),
+    status: TaskStatus.COMPLETED,
+    title: "Send recap to CedarBridge Health",
+    description: "Send the operator recap and mark the follow-up thread as complete.",
+  });
+  await createManualTask({
+    accountId: "acc_frontier_retail",
+    ownerId: "usr_hana_cho",
+    taskType: "RESEARCH",
+    priorityCode: "P2",
+    dueAtIso: addHours(baseDate, 84).toISOString(),
+    status: TaskStatus.IN_PROGRESS,
+    title: "Research APAC expansion signals for Frontier Retail",
+    description: "Validate stakeholder changes and confirm whether the current evaluation is regional or global.",
+  });
+  await createManualTask({
+    accountId: "acc_meridian_freight",
+    ownerId: "usr_amelia_ross",
+    taskType: "REVIEW",
+    priorityCode: "P4",
+    dueAtIso: addHours(baseDate, 96).toISOString(),
+    title: "Review coverage plan for Meridian Freight Cloud",
+    description: "Confirm owner coverage, open dependencies, and the next-best action for the account plan.",
+  });
+
+  const [signalCount, taskCount, recommendationCount] = await Promise.all([
+    prisma.signalEvent.count(),
+    prisma.task.count(),
+    prisma.actionRecommendation.count(),
+  ]);
 
   if (logSummary) {
     console.log(
-      `Seeded GTM Signal Orchestrator demo data: ${userSeed.length} users, ${accounts.length} accounts, ${contacts.length} contacts, ${refreshedLeads.length} leads, ${seededSignalInputs.length} signal events, and ${tasks.length} tasks.`,
+      `Seeded GTM Signal Orchestrator demo data: ${userSeed.length} users, ${accounts.length} accounts, ${contacts.length} contacts, ${leads.length} leads, ${signalCount} signal events, ${taskCount} tasks, and ${recommendationCount} action recommendations.`,
     );
   }
 }

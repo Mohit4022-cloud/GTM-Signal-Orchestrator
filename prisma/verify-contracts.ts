@@ -1,5 +1,6 @@
 import { ScoreEntityType, Segment, SignalStatus, Temperature } from "@prisma/client";
 
+import { getRecommendationsList, getTasks } from "../lib/actions";
 import { getAccountById, getAccounts } from "../lib/queries/accounts";
 import {
   getDashboardSummary,
@@ -195,7 +196,45 @@ async function main() {
     ),
     "Related leads must expose fit scores and scoring snapshot metadata.",
   );
+  invariant(
+    accountDetail.openTasks.every(
+      (task) =>
+        Boolean(task.actionType) &&
+        Boolean(task.actionCategory) &&
+        Boolean(task.priorityCode) &&
+        task.reasonSummary.relatedReasonCodes.length > 0 &&
+        Boolean(task.explanation.summary),
+    ),
+    "Account detail open tasks must expose stable action metadata, reason summaries, and explanations.",
+  );
   invariant(accountDetail.auditLog.length > 0, "Expected account detail audit log.");
+
+  const [atlasLeadQueue, beaconOpsRecommendations] = await Promise.all([
+    getTasks({ entityType: "lead", entityId: "acc_atlas_grid_lead_01" }),
+    getRecommendationsList("account", "acc_beaconops"),
+  ]);
+
+  invariant(atlasLeadQueue.rows.length > 0, "Expected Atlas Grid lead queue rows.");
+  invariant(
+    atlasLeadQueue.rows.every(
+      (task) =>
+        Boolean(task.taskType) &&
+        Boolean(task.actionType) &&
+        Boolean(task.actionCategory) &&
+        Boolean(task.priorityCode) &&
+        Boolean(task.priorityLabel) &&
+        Boolean(task.reasonSummary.primaryCode) &&
+        Boolean(task.linkedEntity.entityType) &&
+        Boolean(task.explanation.summary),
+    ),
+    "Task queue rows must expose frontend-safe action contracts.",
+  );
+  invariant(
+    beaconOpsRecommendations.rows.some(
+      (recommendation) => recommendation.recommendationType === "ADD_TO_NURTURE_QUEUE",
+    ),
+    "BeaconOps recommendations should include the nurture recommendation contract.",
+  );
 
   const [accountScore, leadScore, accountHistory] = await Promise.all([
     getAccountScoreBreakdown("acc_summitflow_finance"),

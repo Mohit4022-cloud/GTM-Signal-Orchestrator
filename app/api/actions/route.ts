@@ -19,6 +19,12 @@ import {
 
 export const runtime = "nodejs";
 
+function maybeThrowForcedError(request: Request) {
+  if (process.env.NODE_ENV === "test" && request.headers.get("x-force-error") === "1") {
+    throw new Error("Forced action route failure.");
+  }
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof ZodError) {
     return error.issues.map((issue) => issue.message).join("; ");
@@ -66,6 +72,7 @@ async function entityExists(entityType: ActionEntityType, entityId: string) {
 
 export async function GET(request: Request) {
   try {
+    maybeThrowForcedError(request);
     const input = parseActionEntityLookup(new URL(request.url).searchParams);
 
     if (!(await entityExists(input.entityType, input.entityId))) {
@@ -100,6 +107,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    maybeThrowForcedError(request);
     const body = await request.json();
     const input = parseActionGenerationRequest(body);
 

@@ -14,6 +14,12 @@ import {
 
 export const runtime = "nodejs";
 
+function maybeThrowForcedError(request: Request) {
+  if (process.env.NODE_ENV === "test" && request.headers.get("x-force-error") === "1") {
+    throw new Error("Forced task route failure.");
+  }
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof ZodError) {
     return error.issues.map((issue) => issue.message).join("; ");
@@ -88,6 +94,7 @@ async function validateManualTaskEntities(input: {
 
 export async function GET(request: Request) {
   try {
+    maybeThrowForcedError(request);
     const filters = parseTaskFilters(new URL(request.url).searchParams);
     const queue = await getTasks(filters);
     return NextResponse.json(queue, { status: 200 });
@@ -112,6 +119,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    maybeThrowForcedError(request);
     const body = await request.json();
     const input = parseCreateTaskRequest(body);
     const validationError = await validateManualTaskEntities(input);

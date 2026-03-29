@@ -254,39 +254,43 @@ export async function getRecentSignals(): Promise<RecentSignalContract[]> {
 }
 
 async function getRecentRoutingFeed(): Promise<RoutingFeedItem[]> {
-  const routingDecisions = await db.routingDecision.findMany({
-    take: 6,
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      decisionType: true,
-      assignedQueue: true,
-      explanation: true,
-      createdAt: true,
-      account: {
-        select: {
-          name: true,
+  try {
+    const routingDecisions = await db.routingDecision.findMany({
+      take: 6,
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        decisionType: true,
+        assignedQueue: true,
+        explanation: true,
+        createdAt: true,
+        account: {
+          select: {
+            name: true,
+          },
+        },
+        assignedOwner: {
+          select: {
+            name: true,
+          },
         },
       },
-      assignedOwner: {
-        select: {
-          name: true,
-        },
-      },
-    },
-  });
+    });
 
-  return routingDecisions.map((decision) => ({
-    id: decision.id,
-    accountName: decision.account?.name ?? "Unmatched account",
-    ownerName: decision.assignedOwner?.name ?? "Ops review",
-    queue: decision.assignedQueue,
-    decisionType: formatEnumLabel(decision.decisionType),
-    createdAt: formatRelativeTime(decision.createdAt),
-    explanation: decision.explanation,
-  }));
+    return routingDecisions.map((decision) => ({
+      id: decision.id,
+      accountName: decision.account?.name ?? "Unmatched account",
+      ownerName: decision.assignedOwner?.name ?? "Ops review",
+      queue: decision.assignedQueue,
+      decisionType: formatEnumLabel(decision.decisionType),
+      createdAt: formatRelativeTime(decision.createdAt),
+      explanation: decision.explanation,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 async function getUnmatchedDashboardSignals() {
